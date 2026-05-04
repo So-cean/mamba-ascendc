@@ -1,0 +1,152 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+MANIFEST
+sdist/
+wheels/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+
+# pyenv
+.python-version
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.pyre/
+
+# Linter / formatter cache
+.ruff_cache/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Project-specific workspace file
+MRIxFields2026-Dev.code-workspace
+
+# Checkpoints (progress notes)
+\#CHECKPOINTS/
+
+# ---- Data files (MRI / medical imaging) ----
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.mat
+*.nii
+*.nii.gz
+*.dcm
+*.mha
+*.mhd
+*.raw
+
+# ---- Model weights / checkpoints ----
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.onnx
+*.pb
+
+# ---- Pickle / serialized ----
+*.pkl
+*.pickle
+
+# ---- Large archives ----
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+*.rar
+
+# ---- Large media (avoid accidental commits) ----
+*.mp4
+*.avi
+
+# ---- Experiment / logging directories ----
+wandb/
+runs/
+logs/
+lightning_logs/
+outputs/
+checkpoints/
+tensorboard/
+
+# Data directories (anchored to repo root — must NOT match Baseline/mrixfields/data/)
+/data/
+/preprocessed/
+
+# Baseline output directories
+Baseline/preprocessed/
+Baseline/predictions/
+
+# Temporary files
+tmp/
+temp/
+
+# Training logs
+*.log
+
+# Debug configs (generated for testing)
+Baseline/configs/debug_*.yaml
+
+# Reference repos and materials (not part of the release)
+reference/
+
+# Internal directories (not for public release)
+tools/
+Submission/docker/
+
+*/kernel_meta/
+/profile
