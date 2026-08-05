@@ -10,6 +10,7 @@ __pycache__/
 .Python
 build/
 dist/
+/dist/*.sha256
 eggs/
 .eggs/
 *.egg-info/
@@ -117,11 +118,25 @@ MRIxFields2026-Dev.code-workspace
 # ---- Experiment / logging directories ----
 wandb/
 runs/
-logs/
+/logs/
+/fusion_result.json
 lightning_logs/
 outputs/
 checkpoints/
 tensorboard/
+
+# AscendC generated artifacts
+/mamba_ascendc/build/
+/mamba_ascendc/output/
+/mamba_ascendc/python/ascend_kernel/ascend_kernel/lib/
+/mamba_ascendc/python/ascend_kernel/ascend_kernel/opp/
+/mamba_ascendc/python/ascend_kernel/*.egg-info/
+/mamba_ascendc_ops/**/build_out/
+/mamba_ascendc_ops/**/install/
+/mamba_ascendc_ops/**/mssanitizer_logs/
+/profiling/
+/kernel_meta/
+/mindstudio_sanitizer_log/
 
 # Data directories (anchored to repo root — must NOT match Baseline/mrixfields/data/)
 /data/
@@ -143,6 +158,29 @@ Baseline/configs/debug_*.yaml
 
 # Reference repos and materials (not part of the release)
 reference/
+
+# Local agent/editor state
+/.claude/
+/AGENTS.md
+
+# Private environment, scheduler jobs, and generated experiment records
+/docs/environment.md
+/docs/kimi-agent/
+/docs/plan/
+/docs/report/
+/docs/triton_ascend_optimization.md
+/scripts/archive/
+/scripts/fwd/
+/scripts/jobs/
+
+# External source trees kept locally (not vendored or declared submodules)
+/mamba/
+/nd-Mamba2-torch/
+/third_party/AscendOpGenAgent/
+
+# Device exception dumps and raw profiler traces
+/extra-info/
+/docs/report/profiler/
 
 # Internal directories (not for public release)
 tools/

@@ -7,6 +7,15 @@ import pytest
 import torch
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "mamba2_gpu: tests requiring CUDA and the official mamba_ssm package"
+    )
+    config.addinivalue_line(
+        "markers", "mamba2_npu: tests requiring an Ascend NPU and Triton-Ascend"
+    )
+
+
 @pytest.fixture(scope="function", autouse=True)
 def fixed_seed():
     """Fix random seed for deterministic tests."""

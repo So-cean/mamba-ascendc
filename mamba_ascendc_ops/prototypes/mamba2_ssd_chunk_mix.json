@@ -1,0 +1,46 @@
+[
+  {
+    "op": "Mamba2SsdChunkMix",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "x_cube",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["fp16"]
+      },
+      {
+        "name": "d_a_cumsum",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["float"]
+      },
+      {
+        "name": "b_cube",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["fp16"]
+      },
+      {
+        "name": "c_cube",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["fp16"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "y_diag",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["float"]
+      },
+      {
+        "name": "chunk_states",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["float"]
+      }
+    ]
+  }
+]
