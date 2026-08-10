@@ -78,6 +78,12 @@ setuptools.setup(
     ),
     distclass=BinaryDistribution,
     license="Apache-2.0",
+    license_files=[
+        "ascend_kernel/licenses/LICENSE",
+        "ascend_kernel/licenses/MulanPSL-2.0.txt",
+        "ascend_kernel/licenses/NOTICE",
+        "ascend_kernel/licenses/THIRD_PARTY_NOTICES.md",
+    ],
     python_requires=">=3.10,<3.12",
     package_data={"ascend_kernel": runtime_files},
     include_package_data=True,

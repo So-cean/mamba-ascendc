@@ -44,6 +44,12 @@ jobs:
       - name: Validate Python syntax
         run: git ls-files '*.py' -z | xargs -0 python -m py_compile
 
+      - name: Validate release license manifest
+        run: |
+          test -s LICENSES/MulanPSL-2.0.txt
+          grep -Fq 'mamba_ascendc/csrc/utils/torch_aclnn_helper.h' THIRD_PARTY_NOTICES.md
+          grep -Fq 'ascend_kernel/licenses/MulanPSL-2.0.txt' scripts/build_mamba_ascendc_wheel.sh
+
       - name: Lint changed project sources
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

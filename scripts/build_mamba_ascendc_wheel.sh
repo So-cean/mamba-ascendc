@@ -41,6 +41,7 @@ cp -f -- \
     "${repo_root}/LICENSE" \
     "${repo_root}/NOTICE" \
     "${repo_root}/THIRD_PARTY_NOTICES.md" \
+    "${repo_root}/LICENSES/MulanPSL-2.0.txt" \
     "${license_staging}/"
 
 pushd "${ops_root}" >/dev/null
@@ -85,6 +86,7 @@ required = (
     "ascend_kernel/licenses/LICENSE",
     "ascend_kernel/licenses/NOTICE",
     "ascend_kernel/licenses/THIRD_PARTY_NOTICES.md",
+    "ascend_kernel/licenses/MulanPSL-2.0.txt",
 )
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()

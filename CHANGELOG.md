@@ -4,6 +4,14 @@ All notable public changes are recorded here. Versions follow Semantic
 Versioning for the Python API; kernel coverage remains subject to the support
 matrix documented in the README.
 
+## [Unreleased]
+
+### Fixed
+
+- Added the complete Mulan PSL 2.0 text and pinned provenance for the
+  byte-identical Ascend `torch_aclnn_helper.h` template.
+- Included the Mulan license in generated wheels and the release license gate.
+
 ## [0.1.0] - 2026-08-10
 
 Initial public release.
@@ -41,4 +49,5 @@ Initial public release.
   target SoC and CANN toolchain. Build the wheel in the target Ascend
   environment with `scripts/build_mamba_ascendc_wheel.sh`.
 
+[Unreleased]: https://github.com/So-cean/mamba-ascendc/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/So-cean/mamba-ascendc/releases/tag/v0.1.0
