@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -41,6 +43,11 @@ jobs:
 
       - name: Validate Python syntax
         run: git ls-files '*.py' -z | xargs -0 python -m py_compile
+
+      - name: Lint changed project sources
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bash scripts/check_changed_sources.sh "${BASE_SHA}" "${GITHUB_SHA}"
 
       - name: Run CPU reference and Vision-Mamba2 tests
         run: |

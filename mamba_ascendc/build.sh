@@ -77,7 +77,6 @@ echo -e "\e[1;32mASCEND_TOOLKIT_HOME: ${ASCEND_TOOLKIT_HOME}\e[0m"
 ASCEND_INCLUDE_DIR=${ASCEND_TOOLKIT_HOME}/$(arch)-linux/include
 CURRENT_DIR=$(pwd)
 PROJECT_ROOT=$(dirname "$CURRENT_DIR")
-VERSION="1.0.0"
 OUTPUT_DIR=$CURRENT_DIR/output
 mkdir -p $OUTPUT_DIR
 echo "outpath: ${OUTPUT_DIR}"

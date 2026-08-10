@@ -9,6 +9,7 @@ ops_root="${repo_root}/mamba_ascendc_ops/mamba2_ssd_chunk_mix"
 extension_root="${repo_root}/mamba_ascendc"
 package_root="${extension_root}/python/ascend_kernel/ascend_kernel"
 opp_staging="${package_root}/opp"
+license_staging="${package_root}/licenses"
 wheel_output="${MAMBA_WHEEL_OUTPUT_DIR:-${repo_root}/dist}"
 compute_unit="${MAMBA_ASCEND_COMPUTE_UNIT:-ascend910b}"
 soc_version="${MAMBA_ASCEND_SOC_VERSION:-Ascend910_9382}"
@@ -29,19 +30,33 @@ cleanup_staging() {
     if [[ -d "${opp_staging}" ]]; then
         rm -rf -- "${opp_staging}"
     fi
+    if [[ -d "${license_staging}" ]]; then
+        rm -rf -- "${license_staging}"
+    fi
 }
 trap cleanup_staging EXIT
 cleanup_staging
-mkdir -p "${opp_staging}" "${wheel_output}"
+mkdir -p "${opp_staging}" "${license_staging}" "${wheel_output}"
+cp -f -- \
+    "${repo_root}/LICENSE" \
+    "${repo_root}/NOTICE" \
+    "${repo_root}/THIRD_PARTY_NOTICES.md" \
+    "${license_staging}/"
 
 pushd "${ops_root}" >/dev/null
 ASCEND_COMPUTE_UNIT="${compute_unit}" ./build.sh
 opp_installer="$(find build_out -maxdepth 2 -type f -name 'custom_opp_*.run' -print -quit)"
-if [[ -z "${opp_installer}" ]]; then
-    echo "Custom OPP installer was not produced." >&2
+if [[ -n "${opp_installer}" ]]; then
+    "${opp_installer}" --quiet --install-path="${opp_staging}"
+elif [[ -d "build_out/packages/vendors/customize" ]]; then
+    # Newer CANN packaging flows may emit an unpacked vendor tree instead of
+    # a self-extracting installer. Both forms contain the same custom OPP.
+    mkdir -p "${opp_staging}/vendors"
+    cp -a -- "build_out/packages/vendors/customize" "${opp_staging}/vendors/"
+else
+    echo "Custom OPP installer or unpacked vendor tree was not produced." >&2
     exit 1
 fi
-"${opp_installer}" --quiet --install-path="${opp_staging}"
 popd >/dev/null
 
 test -f "${opp_staging}/vendors/customize/op_api/lib/libcust_opapi.so"
@@ -67,6 +82,9 @@ required = (
     "ascend_kernel/lib/libascend_kernel.so",
     "ascend_kernel/opp/vendors/customize/op_api/lib/libcust_opapi.so",
     "ascend_kernel/opp/vendors/customize/op_impl/ai_core/tbe/kernel/",
+    "ascend_kernel/licenses/LICENSE",
+    "ascend_kernel/licenses/NOTICE",
+    "ascend_kernel/licenses/THIRD_PARTY_NOTICES.md",
 )
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()

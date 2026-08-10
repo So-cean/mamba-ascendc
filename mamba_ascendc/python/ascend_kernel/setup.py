@@ -20,6 +20,8 @@ class BinaryDistribution(Distribution):
 
 WORKING_DIR = Path(__file__).resolve().parent
 PACKAGE_DIR = WORKING_DIR / "ascend_kernel"
+# setup.py lives at <repository>/mamba_ascendc/python/ascend_kernel/setup.py.
+REPOSITORY_ROOT = WORKING_DIR.parents[2]
 config = ConfigParser()
 config.read(PACKAGE_DIR / "config.ini")
 _version = config.get("global", "version")
@@ -37,7 +39,12 @@ def package_files(directory: str):
     ]
 
 
-runtime_files = package_files("lib") + package_files("opp") + ["config.ini"]
+runtime_files = (
+    package_files("lib")
+    + package_files("opp")
+    + package_files("licenses")
+    + ["config.ini"]
+)
 if not (PACKAGE_DIR / "lib" / "libascend_kernel.so").is_file():
     raise RuntimeError("libascend_kernel.so is missing; build the C++ extension first")
 if not (
@@ -57,14 +64,20 @@ if not (
 setuptools.setup(
     name="mamba-ascendc",
     version=_version,
-    description="Mamba-2 SSD forward kernels for Huawei Ascend NPU",
-    long_description=(WORKING_DIR.parents[1] / "README.md").read_text(encoding="utf-8"),
+    description="Mamba-2 SSD forward and backward operators for Ascend NPU",
+    long_description=(REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8"),
     long_description_content_type="text/markdown",
+    url="https://github.com/So-cean/mamba-ascendc",
+    project_urls={
+        "Source": "https://github.com/So-cean/mamba-ascendc",
+        "Issues": "https://github.com/So-cean/mamba-ascendc/issues",
+        "Benchmarks": "https://github.com/So-cean/mamba-ascendc#benchmark",
+    },
     packages=find_namespace_packages(
         include=("ascend_kernel", "ascend_kernel.*"), exclude=("tests*",)
     ),
     distclass=BinaryDistribution,
-    license="BSD 3 License",
+    license="Apache-2.0",
     python_requires=">=3.10,<3.12",
     package_data={"ascend_kernel": runtime_files},
     include_package_data=True,
@@ -72,8 +85,11 @@ setuptools.setup(
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3 :: Only",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Operating System :: POSIX :: Linux",
+        "Topic :: Software Development :: Libraries",
     ],
 )

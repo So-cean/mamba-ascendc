@@ -27,6 +27,9 @@ ascend_kernel.mamba2_ssd_fwd
 正式发布会将两个工程的产物合并进同一个 `mamba-ascendc` wheel；用户不需要
 单独安装 OPS 工程生成的 `.run` 包。
 
+完整 source-of-truth 与修改边界见
+[`../docs/source-layout.md`](../docs/source-layout.md)。
+
 ## Pip wheel
 
 在已配置 CANN、PyTorch 和 torch_npu 的 NPU 环境中执行：

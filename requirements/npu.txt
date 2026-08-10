@@ -1,0 +1,4 @@
+-r common.txt
+
+# CANN, torch, torch_npu, and Triton-Ascend are a version-matched platform
+# stack and must be installed from the Ascend environment distribution.
