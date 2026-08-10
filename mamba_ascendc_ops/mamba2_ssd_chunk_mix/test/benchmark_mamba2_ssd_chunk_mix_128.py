@@ -87,7 +87,7 @@ def main():
         print(json.dumps(row), flush=True)
     output = Path(os.environ.get(
         "MAMBA_CHUNK128_BENCH_OUTPUT",
-        "docs/report/mamba2_ascendc_v17_chunk128_component_bench_2026-08-02.json",
+        "docs/report/mamba2_ascendc_chunk128_component_bench.json",
     ))
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps({

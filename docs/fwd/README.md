@@ -50,12 +50,15 @@ out, final_state = mamba2_ssd_fwd(
 
 ```bash
 python mamba_ascendc/csrc/ops/mamba2_ssd_fwd/test/run_mamba2_ssd_fwd_aligned_precision.py
-python mamba_ascendc/csrc/ops/mamba2_ssd_fwd/test/run_mamba2_ssd_chunk_mix_precision_report.py
+MAMBA_ASCENDC_CHUNK_MIX=1 \
+  python mamba_ascendc/csrc/ops/mamba2_ssd_fwd/test/run_mamba2_ssd_chunk_mix_precision_report.py
 python benchmarks/mamba2_npu_final_bench.py --cases medium extreme --skip-precision
 ```
 
 当前公开精度矩阵包含 31 个 API case 和 35 个 Cube/MIX 主路径 case。Forward
-输出和 final state 均与 `mamba_torch.ssd_reference` 比较。Backward 尚未实现。
+输出和 final state 均与 `mamba_torch.ssd_reference` 比较。本目录只记录
+forward；native backward M0 及其精度/性能报告位于
+`mamba_ascendc/csrc/ops/mamba2_ssd_bwd/`。
 
 ## 支持边界
 

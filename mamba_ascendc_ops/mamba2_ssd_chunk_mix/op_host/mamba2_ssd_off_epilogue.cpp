@@ -6,6 +6,7 @@
  */
 
 #include "mamba2_ssd_off_epilogue_tiling.h"
+#include "mamba2_cann_compat.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
@@ -81,9 +82,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     const uint32_t aic = platform.GetCoreNumAic();
     const uint32_t aiv = platform.GetCoreNumAiv();
-    if (aic == 0 || aiv < 2 * aic) {
+    // 910B exposes two Vector cores per Cube, while 950PR exposes one.  The
+    // device binary selects the matching MIX task ratio and serializes the
+    // two logical 32-row slabs when only one Vector core is present.
+    if (aic == 0 || aiv < aic) {
         return ge::GRAPH_FAILED;
     }
+    const uint32_t aivPerAic = aiv >= 2 * aic ? 2U : 1U;
     const uint64_t headTasks64 =
         static_cast<uint64_t>(batch) * heads * chunks;
     const uint64_t groupTasks64 =
@@ -113,8 +118,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     tiling.set_workspaceBytesPerCore(static_cast<uint32_t>(workspaceBytes));
     tiling.set_headsPerGroup(static_cast<uint32_t>(heads / groups));
     tiling.set_taskMode(groupMode ? 1U : 0U);
+    tiling.set_aivPerAic(aivPerAic);
     context->SetBlockDim(usedCores);
-    context->SetTilingKey(3);
+    context->SetTilingKey(aivPerAic == 1 ? 13 : 3);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(),
                         context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
@@ -167,6 +173,7 @@ public:
             .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
         this->AICore().SetTiling(optiling::TilingFunc).AddConfig("ascend910b");
+        this->AICore().AddConfig(MAMBA2_ASCEND950_CONFIG);
     }
 };
 OP_ADD(Mamba2SsdOffEpilogue);

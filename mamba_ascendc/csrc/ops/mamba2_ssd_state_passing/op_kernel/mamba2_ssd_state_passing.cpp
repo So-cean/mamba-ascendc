@@ -9,9 +9,11 @@ public:
         GM_ADDR statesStart, GM_ADDR finalState,
         int64_t batch, int64_t nheads, int64_t nchunks, int64_t headdim,
         int64_t dstate, int64_t chunkSize, int64_t hasInitial,
-        int64_t usedCoreNum)
+        int64_t chunkStatesHalf, int64_t usedCoreNum)
     {
         chunkStatesGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(chunkStates));
+        chunkStatesHalfGm_.SetGlobalBuffer(
+            reinterpret_cast<__gm__ half *>(chunkStates));
         dACumsumGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(dACumsum));
         initialStatesGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(initialStates));
         statesStartGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(statesStart));
@@ -23,10 +25,12 @@ public:
         dstate_ = dstate;
         chunkSize_ = chunkSize;
         hasInitial_ = hasInitial;
+        chunkStatesHalf_ = chunkStatesHalf;
         usedCoreNum_ = usedCoreNum;
         stateElements_ = headdim_ * dstate_;
         pipe_.InitBuffer(stateBuf_, stateElements_ * sizeof(float));
         pipe_.InitBuffer(inQueue_, 1, stateElements_ * sizeof(float));
+        pipe_.InitBuffer(halfInQueue_, 1, stateElements_ * sizeof(half));
         pipe_.InitBuffer(outQueue_, 1, stateElements_ * sizeof(float));
     }
 
@@ -58,8 +62,22 @@ public:
                     chunkSize_ - 1;
                 const float decay = ScalarExp(dACumsumGm_.GetValue(decayOffset));
                 auto contribution = inQueue_.AllocTensor<float>();
-                AscendC::DataCopy(
-                    contribution, chunkStatesGm_[stateOffset], stateElements_);
+                if (chunkStatesHalf_ != 0) {
+                    auto contributionHalf = halfInQueue_.AllocTensor<half>();
+                    AscendC::DataCopy(
+                        contributionHalf, chunkStatesHalfGm_[stateOffset],
+                        stateElements_);
+                    halfInQueue_.EnQue(contributionHalf);
+                    contributionHalf = halfInQueue_.DeQue<half>();
+                    AscendC::Cast(
+                        contribution, contributionHalf,
+                        AscendC::RoundMode::CAST_NONE, stateElements_);
+                    halfInQueue_.FreeTensor(contributionHalf);
+                } else {
+                    AscendC::DataCopy(
+                        contribution, chunkStatesGm_[stateOffset],
+                        stateElements_);
+                }
                 inQueue_.EnQue(contribution);
                 contribution = inQueue_.DeQue<float>();
                 AscendC::Muls(state, state, decay, stateElements_);
@@ -115,11 +133,13 @@ private:
     AscendC::TPipe pipe_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> stateBuf_;
     AscendC::TQue<AscendC::TPosition::VECIN, 1> inQueue_;
+    AscendC::TQue<AscendC::TPosition::VECIN, 1> halfInQueue_;
     AscendC::TQue<AscendC::TPosition::VECOUT, 1> outQueue_;
     AscendC::GlobalTensor<float> chunkStatesGm_, dACumsumGm_, initialStatesGm_;
+    AscendC::GlobalTensor<half> chunkStatesHalfGm_;
     AscendC::GlobalTensor<float> statesStartGm_, finalStateGm_;
     int64_t batch_, nheads_, nchunks_, headdim_, dstate_, chunkSize_;
-    int64_t hasInitial_, usedCoreNum_, stateElements_;
+    int64_t hasInitial_, chunkStatesHalf_, usedCoreNum_, stateElements_;
 };
 
 extern "C" __global__ __aicore__ void mamba2_ssd_state_passing(
@@ -127,11 +147,11 @@ extern "C" __global__ __aicore__ void mamba2_ssd_state_passing(
     GM_ADDR statesStart, GM_ADDR finalState,
     int64_t batch, int64_t nheads, int64_t nchunks, int64_t headdim,
     int64_t dstate, int64_t chunkSize, int64_t hasInitial,
-    int64_t usedCoreNum)
+    int64_t chunkStatesHalf, int64_t usedCoreNum)
 {
     KernelMamba2SsdStatePassing op;
     op.Init(chunkStates, dACumsum, initialStates, statesStart, finalState,
             batch, nheads, nchunks, headdim, dstate, chunkSize,
-            hasInitial, usedCoreNum);
+            hasInitial, chunkStatesHalf, usedCoreNum);
     op.Process();
 }

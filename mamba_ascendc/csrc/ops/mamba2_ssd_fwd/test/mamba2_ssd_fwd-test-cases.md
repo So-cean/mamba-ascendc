@@ -79,7 +79,7 @@ Regular tensors keep `x.numel() <= 200K`.
 | G05 | aligned-128 | (1,128,2,64,64,128,1) | BASIC | chunk API partition invariance |
 | G06 | aligned-128 | (1,128,2,64,64,128,1) | ALL | partition invariance with features |
 | G07 | dstate128 | (1,128,2,64,128,128,1) | BASIC | 32 KiB persistent state |
-| G08 | dstate128 | (1,128,2,64,128,128,1) | ALL | maximum V1 state with features |
+| G08 | dstate128 | (1,128,2,64,128,128,1) | ALL | maximum supported state with features |
 | G09 | single-token | (1,1,1,8,8,16,1) | BASIC | smallest valid L |
 | G10 | odd-L | (1,31,2,16,16,16,1) | ALL | L smaller than one micro-chunk |
 | G11 | head-group-ratio | (1,96,16,16,32,32,1) | BASIC | 16 heads sharing one B/C group |
@@ -119,7 +119,7 @@ Invalid-input host tests:
 - chunk_size <= 0;
 - dt_limit_min > dt_limit_max;
 - optional tensor shape mismatch;
-- zero sequence length (outside V1).
+- zero sequence length (unsupported).
 
 ## 5. Baselines
 

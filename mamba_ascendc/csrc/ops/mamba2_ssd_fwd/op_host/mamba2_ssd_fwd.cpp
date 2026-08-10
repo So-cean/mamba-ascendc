@@ -70,7 +70,7 @@ std::tuple<at::Tensor, at::Tensor> mamba2_ssd_fwd(
     const int64_t dstate = B.size(3);
 
     TORCH_CHECK(batch > 0 && seqlen > 0 && nheads > 0 && headdim > 0,
-                "mamba2_ssd_fwd: zero-sized dimensions are not supported in V1");
+                "mamba2_ssd_fwd: zero-sized dimensions are not supported");
     TORCH_CHECK(dstate > 0 && ngroups > 0,
                 "mamba2_ssd_fwd: dstate and ngroups must be positive");
     TORCH_CHECK(dt.sizes() == at::IntArrayRef({batch, seqlen, nheads}),

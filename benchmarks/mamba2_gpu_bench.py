@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+from pathlib import Path
 
 import torch
 
 
-CASES = {
+BASE_CASES = {
     "tiny": (1, 128, 2, 64, 64, 1, 64),
     "small": (2, 512, 8, 64, 64, 1, 64),
     "medium": (4, 2048, 16, 64, 128, 4, 128),
@@ -17,6 +18,11 @@ CASES = {
     "super_extreme": (8, 8192, 32, 64, 128, 8, 128),
     "ultra_extreme": (8, 16384, 32, 64, 128, 8, 128),
 }
+SEQUENCE_CASES = {
+    f"seq_{length}": (8, length, 32, 64, 128, 8, 128)
+    for length in (512, 1024, 2048, 4096, 8192, 16384)
+}
+CASES = {**BASE_CASES, **SEQUENCE_CASES}
 
 
 def make_inputs(case):
@@ -95,14 +101,24 @@ def benchmark(case, warmup, repeat):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cases", nargs="+", default=list(CASES))
+    parser.add_argument("--cases", nargs="+", choices=tuple(CASES), default=list(BASE_CASES))
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--repeat", type=int, default=50)
+    parser.add_argument(
+        "--output",
+        help="Optional JSONL output path; parent directories are created.",
+    )
     args = parser.parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("No CUDA GPU is available")
-    for case in args.cases:
-        print(json.dumps(benchmark(case, args.warmup, args.repeat), ensure_ascii=False))
+    results = [benchmark(case, args.warmup, args.repeat) for case in args.cases]
+    rendered = [json.dumps(result, ensure_ascii=False) for result in results]
+    for line in rendered:
+        print(line)
+    if args.output:
+        destination = Path(args.output)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text("\n".join(rendered) + "\n")
 
 
 if __name__ == "__main__":

@@ -134,6 +134,9 @@ tensorboard/
 /mamba_ascendc_ops/**/build_out/
 /mamba_ascendc_ops/**/install/
 /mamba_ascendc_ops/**/mssanitizer_logs/
+/mamba_ascendc_ops/**/profiler_trace/
+/mamba_ascendc/csrc/ops/**/mssanitizer_logs/
+/mamba_ascendc/csrc/ops/**/test/profiler_trace/
 /profiling/
 /kernel_meta/
 /mindstudio_sanitizer_log/
@@ -162,9 +165,11 @@ reference/
 # Local agent/editor state
 /.claude/
 /AGENTS.md
+**/.codex*.lock
 
 # Private environment, scheduler jobs, and generated experiment records
 /docs/environment.md
+/docs/design/
 /docs/kimi-agent/
 /docs/plan/
 /docs/report/
@@ -181,6 +186,43 @@ reference/
 # Device exception dumps and raw profiler traces
 /extra-info/
 /docs/report/profiler/
+/benchmarks/profiles/
+/benchmarks/results/*
+!/benchmarks/results/readme_benchmarks.json
+/mamba_ascendc/mssanitizer_logs/
+
+# Generated operator candidates and reports. The public README keeps one
+# curated benchmark snapshot and one final precision report instead.
+/opp_*/
+/mamba_ascendc_ops/mamba2_ssd_chunk_mix/mamba2_ssd_*/
+**/fusion_result.json
+**/*precision_report*.json
+**/*precision_report*.md
+!mamba_ascendc/tests/mamba2_ssd_bwd_m1_precision_report_910b3-70pct-final-20260809.md
+**/*mssanitizer_report.md
+**/*torch_npu_profiler_report.md
+**/*baseline_report.md
+**/*optimization_report.md
+**/*optim_summary.md
+**/*perf_cases.jsonl
+**/*debug_report.md
+
+# One-off tuning probes stay local; reusable public benchmarks live in
+# benchmarks/ and functional/precision regressions remain under */test*.
+/benchmarks/compare_cross_platform_heavy.py
+/benchmarks/mamba2_bmm_layout_probe.py
+/benchmarks/run_candidate_ascendc_backward.py
+/mamba_ascendc/tests/benchmark_*.py
+/mamba_ascendc/tests/profile_*.py
+/mamba_ascendc/tests/probe_*.py
+/mamba_ascendc/tests/trace_*.py
+/mamba_ascendc_ops/mamba2_ssd_chunk_mix/test/benchmark_*_950.py
+/mamba_ascendc_ops/mamba2_ssd_chunk_mix/test/profile_*_950.py
+/mamba_ascendc_ops/mamba2_ssd_chunk_mix/test/debug_*.py
+
+# Locally built candidate wheels
+/dist_*/
+/dist_candidate/
 
 # Internal directories (not for public release)
 tools/

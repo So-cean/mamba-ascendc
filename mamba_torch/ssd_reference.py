@@ -7,6 +7,76 @@ import torch
 import torch.nn.functional as F
 
 
+def ssd_sequential_ref(
+    x,
+    dt,
+    A,
+    B,
+    C,
+    D=None,
+    z=None,
+    dt_bias=None,
+    dt_softplus=False,
+    dt_limit=(0.0, float("inf")),
+    initial_states=None,
+    return_final_state=False,
+):
+    """Dtype-preserving sequential SSD oracle for gradcheck-sized inputs.
+
+    Unlike :func:`ssd_chunk_scan_ref`, this helper never forces FP32.  It is
+    intentionally sequential and is used for FP64 directional derivatives,
+    not performance measurements.
+    """
+    batch, seqlen, nheads, headdim = x.shape
+    ngroups, dstate = B.shape[2:]
+    if nheads % ngroups:
+        raise ValueError("nheads must be divisible by ngroups")
+    heads_per_group = nheads // ngroups
+
+    q = dt
+    if dt_bias is not None:
+        q = q + dt_bias.view(1, 1, nheads)
+    if dt_softplus:
+        q = F.softplus(q)
+    q = q.clamp(min=dt_limit[0], max=dt_limit[1])
+    b_heads = B.repeat_interleave(heads_per_group, dim=2)
+    c_heads = C.repeat_interleave(heads_per_group, dim=2)
+    state = (
+        torch.zeros(
+            batch,
+            nheads,
+            headdim,
+            dstate,
+            dtype=x.dtype,
+            device=x.device,
+        )
+        if initial_states is None
+        else initial_states
+    )
+    outputs = []
+    for index in range(seqlen):
+        q_t = q[:, index]
+        decay = torch.exp(q_t * A.view(1, nheads))
+        v = x[:, index] * q_t.unsqueeze(-1)
+        state = (
+            decay.unsqueeze(-1).unsqueeze(-1) * state
+            + v.unsqueeze(-1) * b_heads[:, index].unsqueeze(-2)
+        )
+        y = (state * c_heads[:, index].unsqueeze(-2)).sum(dim=-1)
+        if D is not None:
+            if D.ndim == 1:
+                y = y + x[:, index] * D.view(1, nheads, 1)
+            else:
+                y = y + x[:, index] * D.unsqueeze(0)
+        if z is not None:
+            y = y * F.silu(z[:, index])
+        outputs.append(y)
+    out = torch.stack(outputs, dim=1)
+    if return_final_state:
+        return out, state
+    return out
+
+
 def segsum(x, device=None):
     """Stable segment sum: segsum(x)[i,j] = sum_{k=j+1}^{i} x[k] for i >= j.
 

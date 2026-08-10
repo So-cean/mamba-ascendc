@@ -1,8 +1,15 @@
+import os
+
 import pytest
 import torch
 import torch.nn.functional as F
+import torch_npu  # noqa: F401
 
-import ascend_kernel
+candidate_library = os.environ.get("MAMBA2_TEST_EXTENSION_LIB")
+if candidate_library:
+    torch.ops.load_library(candidate_library)
+else:
+    import ascend_kernel  # noqa: F401
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,169 @@
+{
+  "schema_version": 2,
+  "snapshot_date": "2026-08-10",
+  "operator": "Mamba-2 SSD forward and backward",
+  "shape_order": "B,L,H,P,N,chunk,G",
+  "benchmark_protocol": {
+    "dtype": "float32 public tensors; FP16 Cube operands with FP32 accumulation",
+    "timer": "device events",
+    "warmup": 10,
+    "repeat": 30,
+    "statistic": "median",
+    "a100_backend": "mamba_ssm 2.2.6.post3",
+    "ascend_backend": "source-direct AscendC public API"
+  },
+  "h256_training_gate": {
+    "shape": [8, 4096, 256, 64, 64, 64, 64],
+    "a100": {
+      "device": "NVIDIA A100 80GB PCIe",
+      "forward_ms": 22.5832958
+    },
+    "ascend_910b3": {
+      "device": "Ascend 910B3",
+      "forward_ms": 31.8882198
+    }
+  },
+  "head_scaling": [
+    {
+      "heads": 32,
+      "groups": 8,
+      "a100_forward_ms": 3.080192,
+      "ascend_forward_ms": 4.6192601
+    },
+    {
+      "heads": 64,
+      "groups": 16,
+      "a100_forward_ms": 5.805056,
+      "ascend_forward_ms": 8.6309800
+    },
+    {
+      "heads": 128,
+      "groups": 32,
+      "a100_forward_ms": 11.379200,
+      "ascend_forward_ms": 16.7926598
+    },
+    {
+      "heads": 256,
+      "groups": 64,
+      "a100_forward_ms": 22.5832958,
+      "ascend_forward_ms": 31.8882198
+    }
+  ],
+  "framework_comparison": [
+    {
+      "backend": "PyTorch",
+      "median_ms": 6.287360,
+      "kernel_launches": 335
+    },
+    {
+      "backend": "Triton-Ascend",
+      "median_ms": 4.305170,
+      "kernel_launches": 20
+    },
+    {
+      "backend": "AscendC",
+      "median_ms": 0.632390,
+      "kernel_launches": 3
+    }
+  ],
+  "forward_profile": {
+    "shape": [8, 4096, 256, 64, 64, 64, 64],
+    "event_ms": 31.8882198,
+    "profile_service_ms": 33.9664,
+    "profile_busy_ms": 33.9632656,
+    "mean_internal_gap_ms": 0.0031344,
+    "underfeed_ratio": 0.00009227,
+    "representative_service_ms": 33.92300,
+    "representative_step": [
+      {"name": "Preprocess", "start_ms": 0.0, "duration_ms": 6.60880},
+      {"name": "ChunkMix", "start_ms": 6.61000, "duration_ms": 14.98464},
+      {"name": "Transpose", "start_ms": 21.59525, "duration_ms": 0.11748},
+      {"name": "StateEpilogue", "start_ms": 21.71350, "duration_ms": 12.20956}
+    ],
+    "stages": [
+      {
+        "name": "Preprocess",
+        "duration_ms": 6.666683,
+        "cube_active_percent": 0.0,
+        "aic_mac_percent": 0.0,
+        "aiv_vector_percent": 42.8,
+        "aiv_scalar_percent": 54.822,
+        "aiv_mte2_percent": 26.533,
+        "aiv_mte3_percent": 8.778
+      },
+      {
+        "name": "ChunkMix",
+        "duration_ms": 14.849678,
+        "cube_active_percent": 99.1076,
+        "aic_mac_percent": 16.1,
+        "aiv_vector_percent": 24.8,
+        "aiv_scalar_percent": 56.4,
+        "aiv_mte2_percent": 27.8,
+        "aiv_mte3_percent": 13.0
+      },
+      {
+        "name": "StateEpilogue",
+        "duration_ms": 12.302741,
+        "cube_active_percent": 98.3364,
+        "aic_mac_percent": 2.9,
+        "aiv_vector_percent": 36.056,
+        "aiv_scalar_percent": 62.756,
+        "aiv_mte2_percent": 76.467,
+        "aiv_mte3_percent": 22.456
+      }
+    ],
+    "logical_intermediate_traffic": [
+      {"name": "x_cube", "write_read_mib": 2048},
+      {"name": "dA_cumsum", "write_read_mib": 64},
+      {"name": "B_cube", "write_read_mib": 1024},
+      {"name": "C_cube", "write_read_mib": 1024},
+      {"name": "y_diag", "write_read_mib": 4096},
+      {"name": "chunk_state", "write_read_mib": 4096}
+    ]
+  },
+  "backward_profile": {
+    "shape": [8, 4096, 256, 64, 64, 64, 64],
+    "event_ms": 82.5964508,
+    "profile_ms": 82.4541024,
+    "stages": [
+      {"name": "BatchMatMul", "duration_ms": 23.0534568},
+      {"name": "DtBwd", "duration_ms": 14.7233800},
+      {"name": "DiagFinalize", "duration_ms": 10.8411888},
+      {"name": "Gate", "duration_ms": 9.0959768},
+      {"name": "Off path", "duration_ms": 8.1112152},
+      {"name": "StatePassing", "duration_ms": 7.2287360},
+      {"name": "Prepare", "duration_ms": 7.2415360},
+      {"name": "Transpose", "duration_ms": 0.8606976},
+      {"name": "Other", "duration_ms": 1.2979152}
+    ]
+  },
+  "precision": {
+    "forward_cases": 4,
+    "forward_passed": 4,
+    "backward_cases": 41,
+    "backward_passed": 41,
+    "backward_worst_nrmse": 0.001078,
+    "backward_lowest_cosine": 0.999992847,
+    "finite": true
+  },
+  "vmamba2_end_to_end": {
+    "model": "Pure Vision-Mamba2 tiny",
+    "image_shape": [32, 3, 1024, 1024],
+    "ssd_calls": 48,
+    "a100": {
+      "full_network_ms": 1430.779419,
+      "mamba_mixers_ms": 1081.403393,
+      "ssd_cores_ms": 455.861758
+    },
+    "ascend_910b3": {
+      "full_network_ms": 1856.581299,
+      "mamba_mixers_ms": 1611.603571,
+      "ssd_cores_ms": 699.746658
+    },
+    "accuracy": {
+      "max_abs": 0.0003763139,
+      "nrmse": 0.0003417946,
+      "cosine": 1.00000048
+    }
+  }
+}

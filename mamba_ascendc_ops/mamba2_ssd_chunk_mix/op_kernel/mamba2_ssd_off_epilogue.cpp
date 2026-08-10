@@ -16,7 +16,8 @@ using namespace AscendC;
 namespace {
 constexpr uint32_t kTile = 64;
 constexpr uint32_t kTileElements = kTile * kTile;
-constexpr uint32_t kRowsPerAiv = kTile / 2;
+constexpr uint32_t kLogicalSlabCount = 2;
+constexpr uint32_t kRowsPerSlab = kTile / kLogicalSlabCount;
 constexpr uint32_t kTransposeTile = 16;
 constexpr uint32_t kTransposeElements = kTransposeTile * kTransposeTile;
 constexpr uint16_t kStateReady0 = 0xB;
@@ -34,33 +35,32 @@ public:
                          kTransposeElements * sizeof(half));
         pipe->InitBuffer(transposeOut_, 1,
                          kTransposeElements * sizeof(half));
-        pipe->InitBuffer(dAIn_, 1, kRowsPerAiv * sizeof(float));
+        pipe->InitBuffer(dAIn_, 1, kRowsPerSlab * sizeof(float));
         pipe->InitBuffer(dIn_, 1, kTile * sizeof(float));
         pipe->InitBuffer(yOffIn_, 1,
-                         kRowsPerAiv * kTile * sizeof(float));
+                         kRowsPerSlab * kTile * sizeof(float));
         pipe->InitBuffer(yDiagIn_, 1,
-                         kRowsPerAiv * kTile * sizeof(float));
+                         kRowsPerSlab * kTile * sizeof(float));
         pipe->InitBuffer(xIn_, 1,
-                         kRowsPerAiv * kTile * sizeof(float));
+                         kRowsPerSlab * kTile * sizeof(float));
         pipe->InitBuffer(zIn_, 1,
-                         kRowsPerAiv * kTile * sizeof(float));
+                         kRowsPerSlab * kTile * sizeof(float));
         pipe->InitBuffer(out_, 1,
-                         kRowsPerAiv * kTile * sizeof(float));
+                         kRowsPerSlab * kTile * sizeof(float));
         pipe->InitBuffer(matrix0_,
-                         kRowsPerAiv * kTile * sizeof(float));
+                         kRowsPerSlab * kTile * sizeof(float));
         pipe->InitBuffer(matrix1_,
-                         kRowsPerAiv * kTile * sizeof(float));
+                         kRowsPerSlab * kTile * sizeof(float));
         pipe->InitBuffer(broadcastTmp_,
-                         2 * kRowsPerAiv * kTile * sizeof(uint8_t));
+                         2 * kRowsPerSlab * kTile * sizeof(uint8_t));
     }
 
     __aicore__ inline void PrepareState(
         const GlobalTensor<float> &state,
         GlobalTensor<half> &stateT,
-        uint32_t stateDim)
+        uint32_t stateDim, uint32_t rowBegin)
     {
-        const uint32_t rowBegin = GetSubBlockIdx() * kRowsPerAiv;
-        const uint32_t rowEnd = rowBegin + kRowsPerAiv;
+        const uint32_t rowEnd = rowBegin + kRowsPerSlab;
         for (uint32_t row = rowBegin; row < rowEnd;
              row += kTransposeTile) {
             for (uint32_t col = 0; col < stateDim;
@@ -80,20 +80,19 @@ public:
         const GlobalTensor<float> &d,
         const GlobalTensor<float> &z,
         GlobalTensor<float> out,
-        uint32_t heads)
+        uint32_t heads, uint32_t rowBegin)
     {
-        constexpr uint32_t blockElements = kRowsPerAiv * kTile;
-        const uint32_t rowBegin = GetSubBlockIdx() * kRowsPerAiv;
+        constexpr uint32_t blockElements = kRowsPerSlab * kTile;
         auto broadcastTmp = broadcastTmp_.Get<uint8_t>();
         auto matrix0 = matrix0_.Get<float>();
         auto matrix1 = matrix1_.Get<float>();
 
         auto daLocal = dAIn_.AllocTensor<float>();
-        DataCopy(daLocal, dA[rowBegin], kRowsPerAiv);
+        DataCopy(daLocal, dA[rowBegin], kRowsPerSlab);
         dAIn_.EnQue(daLocal);
         daLocal = dAIn_.DeQue<float>();
-        const uint32_t daSrcShape[2] = {kRowsPerAiv, 1U};
-        const uint32_t matrixShape[2] = {kRowsPerAiv, kTile};
+        const uint32_t daSrcShape[2] = {kRowsPerSlab, 1U};
+        const uint32_t matrixShape[2] = {kRowsPerSlab, kTile};
         Broadcast<float, 2, 1>(matrix0, daLocal, matrixShape,
                                daSrcShape, broadcastTmp);
         PipeBarrier<PIPE_V>();
@@ -128,7 +127,7 @@ public:
         PipeBarrier<PIPE_V>();
 
         DataCopyParams rawLoad{
-            static_cast<uint16_t>(kRowsPerAiv),
+            static_cast<uint16_t>(kRowsPerSlab),
             static_cast<uint16_t>(kTile * sizeof(float) / DEFAULT_C0_SIZE),
             static_cast<uint16_t>((heads - 1) * kTile * sizeof(float) /
                                   DEFAULT_C0_SIZE),
@@ -161,7 +160,7 @@ public:
         out_.EnQue(outLocal);
         outLocal = out_.DeQue<float>();
         DataCopyParams rawStore{
-            static_cast<uint16_t>(kRowsPerAiv),
+            static_cast<uint16_t>(kRowsPerSlab),
             static_cast<uint16_t>(kTile * sizeof(float) / DEFAULT_C0_SIZE),
             0,
             static_cast<uint16_t>((heads - 1) * kTile * sizeof(float) /
@@ -334,9 +333,12 @@ private:
             (static_cast<uint64_t>(batch) * tiling_.heads + head) *
                 tiling_.chunks + chunk;
         auto stateT = workspaceHalf_[slot * stateTHalfElements_];
-        vector_.PrepareState(
-            stateGm_[headTask * kTile * tiling_.stateDim], stateT,
-            tiling_.stateDim);
+        for (uint32_t slab = GetSubBlockIdx(); slab < kLogicalSlabCount;
+             slab += tiling_.aivPerAic) {
+            vector_.PrepareState(
+                stateGm_[headTask * kTile * tiling_.stateDim], stateT,
+                tiling_.stateDim, slab * kRowsPerSlab);
+        }
         SetStateReady(slot);
     }
 
@@ -350,12 +352,15 @@ private:
             (static_cast<uint64_t>(batch) * tiling_.chunks * kTile +
              static_cast<uint64_t>(chunk) * kTile) * tiling_.heads * kTile +
             static_cast<uint64_t>(head) * kTile;
-        vector_.Epilogue(
-            workspaceFloat_[slot * kTileElements],
-            yDiagGm_[headTask * kTileElements],
-            dAGm_[headTask * kTile], xGm_[rawOffset],
-            dGm_[static_cast<uint64_t>(head) * kTile], zGm_[rawOffset],
-            outGm_[rawOffset], tiling_.heads);
+        for (uint32_t slab = GetSubBlockIdx(); slab < kLogicalSlabCount;
+             slab += tiling_.aivPerAic) {
+            vector_.Epilogue(
+                workspaceFloat_[slot * kTileElements],
+                yDiagGm_[headTask * kTileElements],
+                dAGm_[headTask * kTile], xGm_[rawOffset],
+                dGm_[static_cast<uint64_t>(head) * kTile], zGm_[rawOffset],
+                outGm_[rawOffset], tiling_.heads, slab * kRowsPerSlab);
+        }
     }
 
     __aicore__ inline void SetStateReady(uint32_t slot)
@@ -438,13 +443,14 @@ extern "C" __global__ __aicore__ void mamba2_ssd_off_epilogue(
     GM_ADDR y_diag, GM_ADDR x, GM_ADDR d, GM_ADDR z, GM_ADDR out,
     GM_ADDR workspace, GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE(3, KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE(13, KERNEL_TYPE_MIX_AIC_1_1);
     GET_TILING_DATA(tilingData, tiling);
     TPipe pipe;
     KernelMamba2SsdOffEpilogue op;
     op.Init(c_cube, states_start, d_a_cumsum, y_diag, x, d, z, out,
             workspace, tilingData, &pipe);
-    if (TILING_KEY_IS(3)) {
+    if (TILING_KEY_IS(3) || TILING_KEY_IS(13)) {
         op.Process();
     }
 }

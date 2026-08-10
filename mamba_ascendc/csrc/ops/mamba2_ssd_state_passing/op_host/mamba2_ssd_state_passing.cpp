@@ -17,9 +17,11 @@ std::tuple<at::Tensor, at::Tensor> mamba2_ssd_state_passing(
     TORCH_CHECK(chunkStates.device().type() == DEVICE_TYPE &&
                 dACumsum.device().type() == DEVICE_TYPE,
                 "mamba2_ssd_state_passing: inputs must be NPU tensors");
-    TORCH_CHECK(chunkStates.scalar_type() == at::kFloat &&
+    TORCH_CHECK((chunkStates.scalar_type() == at::kFloat ||
+                 chunkStates.scalar_type() == at::kHalf) &&
                 dACumsum.scalar_type() == at::kFloat,
-                "mamba2_ssd_state_passing: inputs must be float32");
+                "mamba2_ssd_state_passing: chunk_states must be FP16/FP32 "
+                "and dA_cumsum must be FP32");
     TORCH_CHECK(chunkStates.is_contiguous() && dACumsum.is_contiguous(),
                 "mamba2_ssd_state_passing: inputs must be contiguous");
     TORCH_CHECK(chunkStates.dim() == 5 && dACumsum.dim() == 4,
@@ -46,18 +48,23 @@ std::tuple<at::Tensor, at::Tensor> mamba2_ssd_state_passing(
                     "mamba2_ssd_state_passing: initial_states shape mismatch");
     }
 
-    at::Tensor statesStart = at::empty_like(chunkStates);
+    auto fp32Options = chunkStates.options().dtype(at::kFloat);
+    at::Tensor statesStart = at::empty(
+        {batch, nheads, nchunks, headdim, dstate}, fp32Options);
     at::Tensor finalState = at::empty(
-        {batch, nheads, headdim, dstate}, chunkStates.options());
+        {batch, nheads, headdim, dstate}, fp32Options);
     at::Tensor initialArg = initialStates.has_value() ? initialStates.value() : chunkStates;
     int64_t hasInitial = initialStates.has_value() ? 1 : 0;
+    int64_t chunkStatesHalf = chunkStates.scalar_type() == at::kHalf ? 1 : 0;
     auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
     const int64_t aivCoreNum = static_cast<int64_t>(platform->GetCoreNumAiv());
     uint64_t ubSize = 0;
     platform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     const uint64_t stateBytes = static_cast<uint64_t>(headdim) * dstate * sizeof(float);
-    TORCH_CHECK(3 * stateBytes + 16 * 1024 <= ubSize,
-                "mamba2_ssd_state_passing: three full-state buffers exceed UB");
+    const uint64_t halfInputBytes =
+        static_cast<uint64_t>(headdim) * dstate * sizeof(at::Half);
+    TORCH_CHECK(3 * stateBytes + halfInputBytes + 16 * 1024 <= ubSize,
+                "mamba2_ssd_state_passing: state buffers exceed UB");
     const int64_t headTaskCount = batch * nheads;
     int64_t usedCoreNum = std::min(headTaskCount, aivCoreNum);
     TORCH_CHECK(usedCoreNum > 0, "mamba2_ssd_state_passing: no AIV cores");
@@ -66,7 +73,7 @@ std::tuple<at::Tensor, at::Tensor> mamba2_ssd_state_passing(
     EXEC_KERNEL_CMD(mamba2_ssd_state_passing, blockDim,
                     chunkStates, dACumsum, initialArg, statesStart, finalState,
                     batch, nheads, nchunks, headdim, dstate, chunkSize,
-                    hasInitial, usedCoreNum);
+                    hasInitial, chunkStatesHalf, usedCoreNum);
     return std::make_tuple(statesStart, finalState);
 }
 

@@ -4,7 +4,8 @@
 
 公开接口为 `ascend_kernel.mamba2_ssd_fwd`，实现固定长度 Mamba-2 SSD forward。
 当前支持 FP32 API、variable B/C、多 head/group、D、z、dt bias、softplus、dt
-clamp、initial state 和 final state；不支持 varlen 和 backward。
+clamp、initial state 和 final state；不支持 varlen。训练路径可选择保存 backward
+所需的 chunk-start state。
 
 数值定义：
 
@@ -91,6 +92,12 @@ Preprocess 使用共享 single-depth input/output queues、16x16 transpose queue
 state cast、Cube projection 和 epilogue。D 当前广播为 token matrix；这是可释放
 UB 的维护项，但不是已证明的性能优化。
 
+训练保存模式使用独立的 `StateEpilogueTrainStates` 变体。在每个 chunk 的
+`UpdateState` 之前，直接把仍驻留 UB 的 chunk-start state 写入 FP32 cache。设备
+侧先写与 `chunk_states` 一致的 Cube-native 连续布局，PyTorch wrapper 在 forward
+阶段仅做一次 public `[B,H,K,P,N]` 布局转换。默认推理和不保存训练路径不产生该
+写回，避免为未使用的 2 GiB heavy-shape cache 付费。
+
 ## 6. Workspace 和同步
 
 AIC 与 AIV 的本地存储不共享，使用每个 MIX core 独立 workspace：
@@ -113,4 +120,4 @@ legacy B slot（仅 chunk64/N128 legacy layout）
 - Memory：chunk_mix/off_epilogue/state_epilogue 分别执行 mssanitizer。
 - 性能：torch_npu profiler；事件计时只用于延迟分布，不替代 profiler 结论。
 
-正式入口见 `scripts/jobs/fwd/` 和 `docs/fwd/README.md`。
+公开构建、验证和 benchmark 入口见 `docs/fwd/README.md` 与仓库根 README。

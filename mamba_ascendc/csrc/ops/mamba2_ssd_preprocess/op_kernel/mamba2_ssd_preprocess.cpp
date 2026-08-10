@@ -6,9 +6,11 @@
 namespace {
 constexpr uint32_t kTransposeTile = 16;
 constexpr uint32_t kTransposeElements = kTransposeTile * kTransposeTile;
-constexpr uint32_t kBulkTransposeBytes = 16 * 1024;
+constexpr uint32_t kBulkTransposeBytes = 8 * 1024;
+constexpr int64_t kHeadBlock = 4;
 }
 
+template <bool GroupedX = false>
 class KernelMamba2SsdPreprocess {
 public:
     __aicore__ inline void Init(
@@ -37,6 +39,10 @@ public:
         ngroups_ = ngroups;
         chunkSize_ = chunkSize;
         nchunks_ = seqlen / chunkSize;
+        headBlock_ = GroupedX
+            ? kHeadBlock
+            : (chunkSize_ == 64 && headdim_ == 64 && nheads_ >= 32 &&
+               nheads_ % kHeadBlock == 0 ? kHeadBlock : 1);
         useDtGather_ = batch_ * nheads_ * nchunks_ >= 512;
         scanLevels_ = 0;
         for (int64_t stride = 1; stride < chunkSize_; stride <<= 1) {
@@ -55,6 +61,20 @@ public:
             kBulkTransposeBytes;
         pipe_.InitBuffer(inQueue_, 1, tileElements * sizeof(float));
         pipe_.InitBuffer(outQueue_, 1, tileElements * sizeof(half));
+        if (headBlock_ > 1) {
+            // Public x is [B,L,H,P].  Load four adjacent heads in one
+            // 1024-byte GM burst per token, then select each head in UB.
+            // This keeps the consumer-facing [B,H,K,T,P] output unchanged.
+            pipe_.InitBuffer(
+                xHeadBlockBuf_,
+                headBlock_ * chunkSize_ * headdim_ * sizeof(float));
+            // Accumulate four head-major FP16 results in UB and issue one
+            // strided MTE3 descriptor.  Each block is 8 KB, while the full
+            // descriptor transfers 32 KB and avoids four independent stores.
+            pipe_.InitBuffer(
+                xHeadBlockOutBuf_,
+                headBlock_ * chunkSize_ * headdim_ * sizeof(half));
+        }
         pipe_.InitBuffer(transposeInQueue_, 1,
                          kTransposeElements * sizeof(half));
         pipe_.InitBuffer(transposeOutQueue_, 1,
@@ -71,7 +91,8 @@ public:
                 GetTPipePtr()->FetchEventID(
                     AscendC::HardEvent::MTE3_MTE2));
         }
-        pipe_.InitBuffer(dABuf_, chunkSize_ * sizeof(float));
+        pipe_.InitBuffer(
+            dABuf_, headBlock_ * chunkSize_ * sizeof(float));
         // A one-element FP32 dt row is padded to one 32-byte UB block.
         pipe_.InitBuffer(dtBuf_, chunkSize_ * 8 * sizeof(float));
         pipe_.InitBuffer(dtCompactBuf_, chunkSize_ * sizeof(float));
@@ -85,16 +106,20 @@ public:
         // pairs.
         if (useDtGather_) {
             pipe_.InitBuffer(dtGatherOffsetsBuf_,
-                             chunkSize_ * sizeof(uint32_t));
+                             headBlock_ * chunkSize_ * sizeof(uint32_t));
             pipe_.InitBuffer(scanSourceBuf_,
                              (chunkSize_ + 8) * sizeof(float));
             pipe_.InitBuffer(scanOffsetsBuf_,
                              scanLevels_ * chunkSize_ * sizeof(uint32_t));
             auto gatherOffsets = dtGatherOffsetsBuf_.Get<uint32_t>();
             auto scanOffsets = scanOffsetsBuf_.Get<uint32_t>();
-            for (int64_t token = 0; token < chunkSize_; ++token) {
-                gatherOffsets.SetValue(token,
-                                       static_cast<uint32_t>(token * 32));
+            for (int64_t localHead = 0; localHead < headBlock_; ++localHead) {
+                for (int64_t token = 0; token < chunkSize_; ++token) {
+                    gatherOffsets.SetValue(
+                        localHead * chunkSize_ + token,
+                        static_cast<uint32_t>(
+                            token * 32 + localHead * sizeof(float)));
+                }
             }
             for (uint32_t level = 0, stride = 1;
                  level < static_cast<uint32_t>(scanLevels_);
@@ -184,82 +209,123 @@ private:
 
     __aicore__ inline void ProcessXAndDA()
     {
-        const int64_t taskCount = batch_ * nheads_ * nchunks_;
+        const int64_t headBlocks = nheads_ / headBlock_;
+        const int64_t taskCount = batch_ * headBlocks * nchunks_;
         const int64_t block = AscendC::GetBlockIdx();
         for (int64_t task = block; task < taskCount; task += usedCoreNum_) {
             const int64_t chunk = task % nchunks_;
-            const int64_t head = (task / nchunks_) % nheads_;
-            const int64_t batch = task / (nchunks_ * nheads_);
+            const int64_t headBlockIndex = (task / nchunks_) % headBlocks;
+            const int64_t batch = task / (nchunks_ * headBlocks);
+            const int64_t firstHead = headBlockIndex * headBlock_;
             const int64_t xElements = chunkSize_ * headdim_;
             const int64_t firstSeq = chunk * chunkSize_;
             const int64_t xSrcOffset =
-                ((batch * seqlen_ + firstSeq) * nheads_ + head) * headdim_;
+                ((batch * seqlen_ + firstSeq) * nheads_ + firstHead) *
+                headdim_;
             const int64_t dtSrcOffset =
-                (batch * seqlen_ + firstSeq) * nheads_ + head;
-            const float bias = hasDtBias_ != 0 ? dtBiasGm_.GetValue(head) : 0.0f;
-            const float aValue = aGm_.GetValue(head);
+                (batch * seqlen_ + firstSeq) * nheads_ + firstHead;
 
-            auto xLocal = inQueue_.AllocTensor<float>();
+            auto xHeadBlockLocal = headBlock_ > 1
+                ? xHeadBlockBuf_.Get<float>()
+                : inQueue_.AllocTensor<float>();
             AscendC::DataCopyExtParams xCopyParams{
                 static_cast<uint16_t>(chunkSize_),
-                static_cast<uint32_t>(headdim_ * sizeof(float)),
-                static_cast<uint32_t>((nheads_ - 1) * headdim_ * sizeof(float)),
+                static_cast<uint32_t>(
+                    headBlock_ * headdim_ * sizeof(float)),
+                static_cast<uint32_t>(
+                    (nheads_ - headBlock_) * headdim_ * sizeof(float)),
                 0, 0};
             AscendC::DataCopyPadExtParams<float> noPad{false, 0, 0, 0.0f};
-            AscendC::DataCopyPad(xLocal, xGm_[xSrcOffset], xCopyParams, noPad);
+            AscendC::DataCopyPad(
+                xHeadBlockLocal, xGm_[xSrcOffset], xCopyParams, noPad);
 
             auto dtLocal = dtBuf_.Get<float>();
             AscendC::DataCopyExtParams dtCopyParams{
                 static_cast<uint16_t>(chunkSize_),
-                static_cast<uint32_t>(sizeof(float)),
-                static_cast<uint32_t>((nheads_ - 1) * sizeof(float)),
+                static_cast<uint32_t>(headBlock_ * sizeof(float)),
+                static_cast<uint32_t>(
+                    (nheads_ - headBlock_) * sizeof(float)),
                 0, 0};
-            AscendC::DataCopyPadExtParams<float> dtPad{true, 0, 7, 0.0f};
+            AscendC::DataCopyPadExtParams<float> dtPad{
+                true, 0, static_cast<uint8_t>(8 - headBlock_), 0.0f};
             AscendC::DataCopyPad(dtLocal, dtGm_[dtSrcOffset], dtCopyParams, dtPad);
-            inQueue_.EnQue(xLocal);
-            xLocal = inQueue_.DeQue<float>();
             AscendC::PipeBarrier<PIPE_ALL>();
 
-            auto dtCompact = dtCompactBuf_.Get<float>();
-            if (useDtGather_) {
-                AscendC::Gather(
-                    dtCompact, dtLocal, dtGatherOffsetsBuf_.Get<uint32_t>(),
-                    0U, static_cast<uint32_t>(chunkSize_));
-            } else {
-                for (int64_t token = 0; token < chunkSize_; ++token) {
-                    dtCompact.SetValue(token, dtLocal.GetValue(token * 8));
-                }
-            }
-            AscendC::PipeBarrier<PIPE_V>();
-            if (hasDtBias_ != 0) {
-                AscendC::Adds(dtCompact, dtCompact, bias, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-            if (dtSoftplus_ != 0) {
-                // Stable vector softplus: max(x,0) + log(1 + exp(-abs(x))).
-                auto dtTmp = dtTmpBuf_.Get<float>();
-                AscendC::Abs(dtTmp, dtCompact, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Muls(dtTmp, dtTmp, -1.0f, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Exp(dtTmp, dtTmp, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Adds(dtTmp, dtTmp, 1.0f, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Ln(dtTmp, dtTmp, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Maxs(dtCompact, dtCompact, 0.0f, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Add(dtCompact, dtCompact, dtTmp, chunkSize_);
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-            AscendC::Maxs(dtCompact, dtCompact, dtLimitMin_, chunkSize_);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Mins(dtCompact, dtCompact, dtLimitMax_, chunkSize_);
-            AscendC::PipeBarrier<PIPE_V>();
+            for (int64_t localHead = 0; localHead < headBlock_; ++localHead) {
+                const int64_t head = firstHead + localHead;
+                const int64_t outputTask =
+                    (batch * nheads_ + head) * nchunks_ + chunk;
+                const float bias = hasDtBias_ != 0
+                    ? dtBiasGm_.GetValue(head) : 0.0f;
+                const float aValue = aGm_.GetValue(head);
 
-            auto dALocal = dABuf_.Get<float>();
-            if (useDtGather_) {
+                auto xLocal = headBlock_ > 1
+                    ? inQueue_.AllocTensor<float>() : xHeadBlockLocal;
+                if (headBlock_ > 1) {
+                    AscendC::DataCopyParams selectHeadParams{
+                        static_cast<uint16_t>(chunkSize_),
+                        static_cast<uint16_t>(
+                            headdim_ * sizeof(float) /
+                            AscendC::DEFAULT_C0_SIZE),
+                        static_cast<uint16_t>(
+                            (headBlock_ - 1) * headdim_ * sizeof(float) /
+                            AscendC::DEFAULT_C0_SIZE),
+                            0};
+                    AscendC::DataCopy(
+                        xLocal, xHeadBlockLocal[localHead * headdim_],
+                        selectHeadParams);
+                }
+                inQueue_.EnQue(xLocal);
+                xLocal = inQueue_.DeQue<float>();
+                AscendC::PipeBarrier<PIPE_ALL>();
+
+                auto dtCompact = dtCompactBuf_.Get<float>();
+                if (useDtGather_) {
+                    AscendC::Gather(
+                        dtCompact, dtLocal,
+                        dtGatherOffsetsBuf_.Get<uint32_t>()[
+                            localHead * chunkSize_],
+                        0U, static_cast<uint32_t>(chunkSize_));
+                } else {
+                    for (int64_t token = 0; token < chunkSize_; ++token) {
+                        dtCompact.SetValue(
+                            token, dtLocal.GetValue(token * 8 + localHead));
+                    }
+                }
+                AscendC::PipeBarrier<PIPE_V>();
+                if (hasDtBias_ != 0) {
+                    AscendC::Adds(dtCompact, dtCompact, bias, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                }
+                if (dtSoftplus_ != 0) {
+                    // Stable vector softplus:
+                    // max(x,0) + log(1 + exp(-abs(x))).
+                    auto dtTmp = dtTmpBuf_.Get<float>();
+                    AscendC::Abs(dtTmp, dtCompact, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Muls(dtTmp, dtTmp, -1.0f, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Exp(dtTmp, dtTmp, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Adds(dtTmp, dtTmp, 1.0f, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Ln(dtTmp, dtTmp, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Maxs(
+                        dtCompact, dtCompact, 0.0f, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Add(
+                        dtCompact, dtCompact, dtTmp, chunkSize_);
+                    AscendC::PipeBarrier<PIPE_V>();
+                }
+                AscendC::Maxs(dtCompact, dtCompact, dtLimitMin_, chunkSize_);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Mins(dtCompact, dtCompact, dtLimitMax_, chunkSize_);
+                AscendC::PipeBarrier<PIPE_V>();
+
+                auto dALocal = dABuf_.Get<float>()[
+                    localHead * chunkSize_];
+                if (useDtGather_) {
                 AscendC::Muls(dALocal, dtCompact, aValue, chunkSize_);
                 AscendC::PipeBarrier<PIPE_V>();
                 auto scanSource = scanSourceBuf_.Get<float>();
@@ -281,42 +347,122 @@ private:
                     AscendC::Add(dALocal, dALocal, scanTmp, chunkSize_);
                     AscendC::PipeBarrier<PIPE_V>();
                 }
-            } else {
-                float prefix = 0.0f;
-                for (int64_t token = 0; token < chunkSize_; ++token) {
-                    prefix += dtCompact.GetValue(token) * aValue;
-                    dALocal.SetValue(token, prefix);
+                } else {
+                    float prefix = 0.0f;
+                    for (int64_t token = 0; token < chunkSize_; ++token) {
+                        prefix += dtCompact.GetValue(token) * aValue;
+                        dALocal.SetValue(token, prefix);
+                    }
                 }
+                AscendC::PipeBarrier<PIPE_ALL>();
+                auto dtMatrix = dtMatrixBuf_.Get<float>();
+                auto broadcastTmp = broadcastTmpBuf_.Get<uint8_t>();
+                const uint32_t dtSrcShape[2] = {
+                    static_cast<uint32_t>(chunkSize_), 1U};
+                const uint32_t dtDstShape[2] = {
+                    static_cast<uint32_t>(chunkSize_),
+                    static_cast<uint32_t>(headdim_)};
+                AscendC::Broadcast<float, 2, 1>(
+                    dtMatrix, dtCompact, dtDstShape, dtSrcShape,
+                    broadcastTmp);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Mul(xLocal, xLocal, dtMatrix, xElements);
+                AscendC::PipeBarrier<PIPE_V>();
+                if (headBlock_ > 1) {
+                    auto outLocal = xHeadBlockOutBuf_.Get<half>()[
+                        localHead * xElements];
+                    AscendC::Cast(
+                        outLocal, xLocal, AscendC::RoundMode::CAST_NONE,
+                        xElements);
+                } else {
+                    auto outLocal = outQueue_.AllocTensor<half>();
+                    AscendC::Cast(
+                        outLocal, xLocal, AscendC::RoundMode::CAST_NONE,
+                        xElements);
+                    outQueue_.EnQue(outLocal);
+                    outLocal = outQueue_.DeQue<half>();
+                    AscendC::DataCopyExtParams xOutParams{
+                        1, static_cast<uint32_t>(xElements * sizeof(half)),
+                        0, 0, 0};
+                    AscendC::DataCopyPad(
+                        xCubeGm_[outputTask * xElements], outLocal,
+                        xOutParams);
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    AscendC::DataCopyExtParams dAOutParams{
+                        1,
+                        static_cast<uint32_t>(chunkSize_ * sizeof(float)),
+                        0, 0, 0};
+                    AscendC::DataCopyPad(
+                        dACumsumGm_[outputTask * chunkSize_], dALocal,
+                        dAOutParams);
+                    outQueue_.FreeTensor(outLocal);
+                }
+                inQueue_.FreeTensor(xLocal);
             }
-            AscendC::PipeBarrier<PIPE_ALL>();
-            auto dtMatrix = dtMatrixBuf_.Get<float>();
-            auto broadcastTmp = broadcastTmpBuf_.Get<uint8_t>();
-            const uint32_t dtSrcShape[2] = {
-                static_cast<uint32_t>(chunkSize_), 1U};
-            const uint32_t dtDstShape[2] = {
-                static_cast<uint32_t>(chunkSize_),
-                static_cast<uint32_t>(headdim_)};
-            AscendC::Broadcast<float, 2, 1>(
-                dtMatrix, dtCompact, dtDstShape, dtSrcShape, broadcastTmp);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Mul(xLocal, xLocal, dtMatrix, xElements);
-            AscendC::PipeBarrier<PIPE_V>();
-            auto outLocal = outQueue_.AllocTensor<half>();
-            AscendC::Cast(
-                outLocal, xLocal, AscendC::RoundMode::CAST_NONE, xElements);
-            outQueue_.EnQue(outLocal);
-            outLocal = outQueue_.DeQue<half>();
-            AscendC::DataCopyExtParams xOutParams{
-                1, static_cast<uint32_t>(xElements * sizeof(half)), 0, 0, 0};
-            AscendC::DataCopyPad(
-                xCubeGm_[task * xElements], outLocal, xOutParams);
-            AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::DataCopyExtParams dAOutParams{
-                1, static_cast<uint32_t>(chunkSize_ * sizeof(float)), 0, 0, 0};
-            AscendC::DataCopyPad(
-                dACumsumGm_[task * chunkSize_], dALocal, dAOutParams);
-            inQueue_.FreeTensor(xLocal);
-            outQueue_.FreeTensor(outLocal);
+            if (headBlock_ > 1) {
+                AscendC::PipeBarrier<PIPE_ALL>();
+                const int64_t firstOutputTask =
+                    (batch * nheads_ + firstHead) * nchunks_ + chunk;
+                if constexpr (GroupedX) {
+                    // Convert the UB-only [R,T,P] work layout directly into
+                    // canonical [T,R,P].  The public x load was already
+                    // [T,R,P], so no intermediate GM tensor is materialized.
+                    // Reuse the now-dead FP32 input buffer as a 32-KiB FP16
+                    // destination and write one contiguous group task.
+                    auto groupLocal = xHeadBlockBuf_.Get<half>();
+                    const AscendC::DataCopyParams packHead{
+                        static_cast<uint16_t>(chunkSize_),
+                        static_cast<uint16_t>(
+                            headdim_ * sizeof(half) /
+                            AscendC::DEFAULT_C0_SIZE),
+                        0,
+                        static_cast<uint16_t>(
+                            (headBlock_ - 1) * headdim_ * sizeof(half) /
+                            AscendC::DEFAULT_C0_SIZE)};
+                    for (int64_t localHead = 0; localHead < headBlock_;
+                         ++localHead) {
+                        AscendC::DataCopy(
+                            groupLocal[localHead * headdim_],
+                            xHeadBlockOutBuf_.Get<half>()[
+                                localHead * xElements],
+                            packHead);
+                    }
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    const int64_t group = firstHead / headBlock_;
+                    const int64_t groupTask =
+                        (batch * nchunks_ + chunk) * ngroups_ + group;
+                    AscendC::DataCopyExtParams xOutParams{
+                        1,
+                        static_cast<uint32_t>(
+                            headBlock_ * xElements * sizeof(half)),
+                        0, 0, 0};
+                    AscendC::DataCopyPad(
+                        xCubeGm_[groupTask * headBlock_ * xElements],
+                        groupLocal, xOutParams);
+                } else {
+                    AscendC::DataCopyExtParams xOutParams{
+                        static_cast<uint16_t>(headBlock_),
+                        static_cast<uint32_t>(xElements * sizeof(half)),
+                        0,
+                        static_cast<uint32_t>(
+                            (nchunks_ - 1) * xElements * sizeof(half)),
+                        0};
+                    AscendC::DataCopyPad(
+                        xCubeGm_[firstOutputTask * xElements],
+                        xHeadBlockOutBuf_.Get<half>(), xOutParams);
+                }
+                AscendC::DataCopyExtParams dAOutParams{
+                    static_cast<uint16_t>(headBlock_),
+                    static_cast<uint32_t>(chunkSize_ * sizeof(float)),
+                    0,
+                    static_cast<uint32_t>(
+                        (nchunks_ - 1) * chunkSize_ * sizeof(float)),
+                    0};
+                AscendC::DataCopyPad(
+                    dACumsumGm_[firstOutputTask * chunkSize_],
+                    dABuf_.Get<float>(), dAOutParams);
+                AscendC::PipeBarrier<PIPE_ALL>();
+            }
         }
     }
 
@@ -478,6 +624,8 @@ private:
     AscendC::TQue<AscendC::TPosition::VECIN, 1> transposeInQueue_;
     AscendC::TQue<AscendC::TPosition::VECOUT, 1> transposeOutQueue_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> bTransposeBuf_;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> xHeadBlockBuf_;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> xHeadBlockOutBuf_;
     AscendC::LocalTensor<half> bTransposeLocal_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> dABuf_, dtBuf_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> dtCompactBuf_, dtTmpBuf_;
@@ -489,7 +637,8 @@ private:
     AscendC::GlobalTensor<half> xCubeGm_, bCubeGm_, cCubeGm_;
     AscendC::GlobalTensor<float> dACumsumGm_;
     int64_t batch_, seqlen_, nheads_, headdim_, dstate_, ngroups_;
-    int64_t chunkSize_, nchunks_, hasDtBias_, dtSoftplus_, usedCoreNum_;
+    int64_t chunkSize_, nchunks_, headBlock_, hasDtBias_, dtSoftplus_;
+    int64_t usedCoreNum_;
     int64_t scanLevels_ = 0;
     bool useDtGather_ = false;
     bool useBulkTransposeStore_ = false;
@@ -507,7 +656,22 @@ extern "C" __global__ __aicore__ void mamba2_ssd_preprocess(
     int64_t hasDtBias, int64_t dtSoftplus, float dtLimitMin,
     float dtLimitMax, int64_t usedCoreNum)
 {
-    KernelMamba2SsdPreprocess op;
+    KernelMamba2SsdPreprocess<false> op;
+    op.Init(x, dt, a, b, c, dtBias, xCube, dACumsum, bCube, cCube,
+            batch, seqlen, nheads, headdim, dstate, ngroups, chunkSize,
+            hasDtBias, dtSoftplus, dtLimitMin, dtLimitMax, usedCoreNum);
+    op.Process();
+}
+
+extern "C" __global__ __aicore__ void mamba2_ssd_preprocess_grouped(
+    GM_ADDR x, GM_ADDR dt, GM_ADDR a, GM_ADDR b, GM_ADDR c, GM_ADDR dtBias,
+    GM_ADDR xCube, GM_ADDR dACumsum, GM_ADDR bCube, GM_ADDR cCube,
+    int64_t batch, int64_t seqlen, int64_t nheads, int64_t headdim,
+    int64_t dstate, int64_t ngroups, int64_t chunkSize,
+    int64_t hasDtBias, int64_t dtSoftplus, float dtLimitMin,
+    float dtLimitMax, int64_t usedCoreNum)
+{
+    KernelMamba2SsdPreprocess<true> op;
     op.Init(x, dt, a, b, c, dtBias, xCube, dACumsum, bCube, cCube,
             batch, seqlen, nheads, headdim, dstate, ngroups, chunkSize,
             hasDtBias, dtSoftplus, dtLimitMin, dtLimitMax, usedCoreNum);

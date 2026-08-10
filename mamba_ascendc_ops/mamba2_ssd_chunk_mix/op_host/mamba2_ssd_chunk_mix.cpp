@@ -7,8 +7,8 @@
  */
 
 #include "mamba2_ssd_chunk_mix_tiling.h"
+#include "mamba2_cann_compat.h"
 #include "register/op_def_registry.h"
-#include "tiling/platform/platform_ascendc.h"
 
 namespace {
 
@@ -17,8 +17,14 @@ constexpr int64_t kTile = 64;
 // in fp32.  Key 3 additionally needs a legacy B[T,N] workspace because its
 // state output remains [P,N]; Keys 2/7 consume preprocessed B^T directly.
 size_t WorkspaceBytesPerCore(int64_t chunkSize, int64_t headDim,
-                             int64_t stateDim)
+                             int64_t stateDim, bool useArch35Matmul)
 {
+    // Arch35 grouped-state keeps four weighted-X heads packed as [64,256],
+    // two W slots, a [64,256] fp32 state result and one fp32 CB tile.
+    if (useArch35Matmul) {
+        return static_cast<size_t>(6 * kTile * kTile) * sizeof(uint16_t) +
+               static_cast<size_t>(5 * kTile * kTile) * sizeof(float);
+    }
     const int64_t legacyBElements =
         chunkSize == kTile && stateDim == 2 * kTile
             ? chunkSize * stateDim : 0;
@@ -40,6 +46,33 @@ bool SameShape(const gert::Shape &lhs, const gert::Shape &rhs)
         }
     }
     return true;
+}
+
+bool BuildArch35MatmulTiling(
+    const platform_ascendc::PlatformAscendC &platform,
+    int64_t m, int64_t n, int64_t k, optiling::TCubeTiling &tiling)
+{
+    matmul_tiling::MultiCoreMatmulTiling cubeTiling(platform);
+    return cubeTiling.SetAType(matmul_tiling::TPosition::GM,
+                               matmul_tiling::CubeFormat::ND,
+                               matmul_tiling::DataType::DT_FLOAT16) == 0 &&
+           cubeTiling.SetBType(matmul_tiling::TPosition::GM,
+                               matmul_tiling::CubeFormat::ND,
+                               matmul_tiling::DataType::DT_FLOAT16) == 0 &&
+           cubeTiling.SetCType(matmul_tiling::TPosition::GM,
+                               matmul_tiling::CubeFormat::ND,
+                               matmul_tiling::DataType::DT_FLOAT) == 0 &&
+           cubeTiling.SetBiasType(matmul_tiling::TPosition::GM,
+                                  matmul_tiling::CubeFormat::ND,
+                                  matmul_tiling::DataType::DT_FLOAT) == 0 &&
+           cubeTiling.SetShape(m, n, k) == 0 &&
+           cubeTiling.SetOrgShape(m, n, k) == 0 &&
+           cubeTiling.SetDim(1) == 0 &&
+           cubeTiling.SetSingleShape(m, n, k) == 0 &&
+           cubeTiling.SetFixSplit(m, n, k) == 0 &&
+           cubeTiling.EnableBias(false) == 0 &&
+           cubeTiling.SetBufferSpace(-1, -1, -1) == 0 &&
+           cubeTiling.GetTiling(tiling) != -1;
 }
 
 } // namespace
@@ -84,7 +117,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     const uint32_t aic = platform.GetCoreNumAic();
     const uint32_t aiv = platform.GetCoreNumAiv();
-    if (aic == 0 || aiv < 2 * aic) {
+    const bool isAscend950 = mamba2_compat::IsAscend950(platform);
+    if (aic == 0 || (isAscend950 ? aiv < aic : aiv < 2 * aic)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -105,8 +139,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
         groupTaskCount >= aic && heads / groups > 1 ? 1U : 0U;
     const uint32_t taskCount = taskMode == 1 ? groupTaskCount : headTaskCount;
     const uint32_t usedCoreNum = taskCount < aic ? taskCount : aic;
-    const size_t workspaceBytesPerCore =
-        WorkspaceBytesPerCore(chunkSize, headDim, stateDim);
+    const bool useArch35Matmul =
+        isAscend950 && chunkSize == kTile && stateDim == kTile;
+    const size_t workspaceBytesPerCore = WorkspaceBytesPerCore(
+        chunkSize, headDim, stateDim, useArch35Matmul);
 
     Mamba2SsdChunkMixTilingData tiling;
     tiling.set_batch(static_cast<uint32_t>(batch));
@@ -131,11 +167,21 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
         (chunkSize == kTile && stateDim == kTile) ||
         chunkSize == 2 * kTile ? 1U : 0U;
     tiling.set_stateNpLayout(stateNpLayout);
+    tiling.set_inputGroupedX(0U);
+
+    if (useArch35Matmul &&
+        (!BuildArch35MatmulTiling(platform, kTile, kTile, kTile,
+                                  tiling.cubeTilingData) ||
+         !BuildArch35MatmulTiling(platform, kTile, 4 * kTile, kTile,
+                                  tiling.groupedStateCubeTilingData))) {
+        return ge::GRAPH_FAILED;
+    }
 
 
     context->SetBlockDim(usedCoreNum);
-    context->SetTilingKey(chunkSize == 2 * kTile ? 7 :
-                          (stateDim == kTile ? 2 : 3));
+    context->SetTilingKey(useArch35Matmul ? 9 :
+                          (chunkSize == 2 * kTile ? 7 :
+                           (stateDim == kTile ? 2 : 3)));
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(),
                         context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
@@ -212,6 +258,7 @@ public:
 
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
         this->AICore().SetTiling(optiling::TilingFunc).AddConfig("ascend910b");
+        this->AICore().AddConfig(MAMBA2_ASCEND950_CONFIG);
     }
 };
 

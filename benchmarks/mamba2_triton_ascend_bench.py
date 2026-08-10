@@ -12,7 +12,7 @@ import torch_npu  # noqa: F401  # Register the NPU backend.
 from mamba_triton_ascend.mamba2 import mamba_chunk_scan_combined
 
 
-CASES = {
+BASE_CASES = {
     "tiny": (1, 128, 2, 64, 64, 1, 64),
     "small": (2, 512, 8, 64, 64, 1, 64),
     "medium": (4, 2048, 16, 64, 128, 4, 128),
@@ -20,6 +20,11 @@ CASES = {
     "super_extreme": (8, 8192, 32, 64, 128, 8, 128),
     "ultra_extreme": (8, 16384, 32, 64, 128, 8, 128),
 }
+SEQUENCE_CASES = {
+    f"seq_{length}": (8, length, 32, 64, 128, 8, 128)
+    for length in (512, 1024, 2048, 4096, 8192, 16384)
+}
+CASES = {**BASE_CASES, **SEQUENCE_CASES}
 
 
 def make_inputs(case: str):
@@ -98,7 +103,9 @@ def benchmark(case: str, warmup: int, repeat: int) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cases", nargs="+", choices=tuple(CASES), default=tuple(CASES))
+    parser.add_argument(
+        "--cases", nargs="+", choices=tuple(CASES), default=tuple(BASE_CASES)
+    )
     parser.add_argument("--warmup", type=int, default=30)
     parser.add_argument("--repeat", type=int, default=200)
     args = parser.parse_args()

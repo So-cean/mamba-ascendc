@@ -3,6 +3,9 @@ set -e
 
 BUILD_KERNELS_MODULE="ON"
 DEBUG_MODE="OFF"
+# Source iteration is the safe default.  Release packaging must opt in via
+# scripts/build_mamba_ascendc_wheel.sh, which sets this switch to 0 explicitly.
+DEV_BUILD="${MAMBA_ASCENDC_DEV_BUILD:-1}"
 
 while getopts ":a:hd" opt; do
     case ${opt} in
@@ -52,11 +55,16 @@ SOC_VERSION="${1:-Ascend910_9382}"
 
 ### Use the CANN Toolkit selected by the active conda environment.
 if [[ -z "${ASCEND_HOME_PATH:-}" ]]; then
-    echo "ASCEND_HOME_PATH is unset. Activate conda env 'vae' before building."
+    echo "ASCEND_HOME_PATH is unset. Source the selected CANN set_env.sh before building."
     exit 1
 fi
 _CANN_TOOLKIT_INSTALL_PATH="${ASCEND_HOME_PATH}"
-if [[ ! -f "${_CANN_TOOLKIT_INSTALL_PATH}/version.cfg" ]]; then
+# CANN 8.x installations expose version.cfg at the toolkit root.  The CANN
+# 9.0 unified image replaces it with component version.info files while keeping
+# set_env.sh and the public include/lib directories at the same root.
+if [[ ! -f "${_CANN_TOOLKIT_INSTALL_PATH}/version.cfg" &&
+      ! -f "${_CANN_TOOLKIT_INSTALL_PATH}/share/info/runtime/version.info" &&
+      ! -f "${_CANN_TOOLKIT_INSTALL_PATH}/opp/version.info" ]]; then
     echo "Invalid CANN Toolkit path: ${_CANN_TOOLKIT_INSTALL_PATH}."
     exit 1
 fi
@@ -83,19 +91,27 @@ function build_kernels()
 
     cd "$CMAKE_DIR" || exit
 
-    rm -rf $BUILD_DIR
-    mkdir -p $BUILD_DIR
+    if [[ "$DEV_BUILD" != "1" || ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+        rm -rf "$BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+        cmake $COMPILE_OPTIONS \
+        -DCMAKE_INSTALL_PREFIX="$OUTPUT_DIR" \
+        -DASCEND_HOME_PATH=$ASCEND_HOME_PATH \
+        -DASCEND_INCLUDE_DIR=$ASCEND_INCLUDE_DIR \
+        -DSOC_VERSION=$SOC_VERSION \
+        -DBUILD_KERNELS_MODULE=$BUILD_KERNELS_MODULE \
+        -B "$BUILD_DIR" \
+        -S .
+    fi
 
-    cmake $COMPILE_OPTIONS \
-    -DCMAKE_INSTALL_PREFIX="$OUTPUT_DIR" \
-    -DASCEND_HOME_PATH=$ASCEND_HOME_PATH \
-    -DASCEND_INCLUDE_DIR=$ASCEND_INCLUDE_DIR \
-    -DSOC_VERSION=$SOC_VERSION \
-    -DBUILD_KERNELS_MODULE=$BUILD_KERNELS_MODULE \
-    -B "$BUILD_DIR" \
-    -S .
-
-    cmake --build "$BUILD_DIR" --target install -j 16
+    if [[ "$DEV_BUILD" == "1" ]]; then
+        # Development iterations load this shared library directly.  Keep the
+        # CMake tree and rebuild only changed dependencies; wheel/OPP packaging
+        # belongs to the final release gate.
+        cmake --build "$BUILD_DIR" --target ascend_kernel -j 16
+    else
+        cmake --build "$BUILD_DIR" --target install -j 16
+    fi
     cd -
 }
 
@@ -115,6 +131,9 @@ function main()
 {
 
     build_kernels
+    if [[ "$DEV_BUILD" == "1" ]]; then
+        return
+    fi
     if pip3 show wheel;then
         echo "wheel has been installed"
     else

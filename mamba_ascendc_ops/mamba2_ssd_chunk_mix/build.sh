@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e -o pipefail
+
 if [ -z "$BASE_LIBS_PATH" ]; then 
   if [ -z "$ASCEND_HOME_PATH" ]; then 
     if [ -z "$ASCEND_AICPU_PATH" ]; then 
@@ -26,16 +28,31 @@ opts=$(python3 $script_path/cmake/util/preset_parse.py $script_path/CMakePresets
 # CANN/Python selected by the active environment so the wheel is reproducible
 # outside the original workspace.
 opts="$opts -DASCEND_CANN_PACKAGE_PATH=$ASCEND_HOME_PATH -DASCEND_PYTHON_EXECUTABLE=$(command -v python3)"
+if [[ -n "${ASCEND_COMPUTE_UNIT:-}" ]]; then
+  opts="$opts -DASCEND_COMPUTE_UNIT=${ASCEND_COMPUTE_UNIT}"
+fi
+# op_build dlopens the temporary registration library.  The active conda
+# compiler emits symbols newer than the system libstdc++ selected by the
+# op_build executable's default search path, which makes op_build fail
+# silently before generating op_proto.cc.  Put the matching runtime first.
+python_prefix=$(python3 -c 'import sys; print(sys.prefix)')
+export LD_LIBRARY_PATH="$python_prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 runtime_opts=(
   "-DASCEND_CANN_PACKAGE_PATH=$ASCEND_HOME_PATH"
   "-DASCEND_PYTHON_EXECUTABLE=$(command -v python3)"
 )
+if [[ -n "${ASCEND_COMPUTE_UNIT:-}" ]]; then
+  runtime_opts+=("-DASCEND_COMPUTE_UNIT=${ASCEND_COMPUTE_UNIT}")
+fi
 ENABLE_CROSS="-DENABLE_CROSS_COMPILE=True"
 ENABLE_BINARY="-DENABLE_BINARY_PACKAGE=True"
 ENABLE_LIBRARY="-DASCEND_PACK_SHARED_LIBRARY=True"
 cmake_version=$(cmake --version | grep "cmake version" | awk '{print $3}')
 
-target=package
+# Development builds stage the compiled OPP directly under
+# build_out/packages/vendors/<vendor>.  Packaging is a release-only action:
+# pass `package` explicitly when a self-extracting .run artifact is required.
+target=install
 if [ "$1"x != ""x ]; then target=$1; fi
 if [[ $opts =~ $ENABLE_LIBRARY ]]; then target=install; fi
 

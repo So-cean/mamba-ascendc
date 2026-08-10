@@ -1,4 +1,5 @@
 #include "register/tilingdata_base.h"
+#include "tiling/tiling_api.h"
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(Mamba2SsdChunkMixTilingData)
@@ -16,6 +17,10 @@ TILING_DATA_FIELD_DEF(uint32_t, workspaceBytesPerCore);
 TILING_DATA_FIELD_DEF(uint32_t, taskMode);
 TILING_DATA_FIELD_DEF(uint32_t, headsPerGroup);
 TILING_DATA_FIELD_DEF(uint32_t, stateNpLayout);
+TILING_DATA_FIELD_DEF(uint32_t, inputGroupedX);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, groupedStateCubeTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, batchDiagCubeTilingData);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(Mamba2SsdChunkMix, Mamba2SsdChunkMixTilingData)

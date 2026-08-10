@@ -6,11 +6,15 @@
 // A 64x64 output-tile Cube helper whose K length and all GM row strides are
 // supplied per invocation.  One allocation can therefore serve CB, diagonal
 // output and state GEMMs without triplicating L1/L0 storage.
-template <typename InType, typename OutType, uint32_t BaseK = 16>
+template <typename InType, typename OutType, uint32_t BaseK = 16,
+          uint32_t MaxN = 128>
 class Mamba2DynamicMatmul {
     static constexpr uint32_t kBaseM = 64;
     static constexpr uint32_t kBaseN = 64;
-    static constexpr uint32_t kMaxN = 128;
+    // DiagState backward packs up to four N=64 heads into a 256-column
+    // projection.  64x256 FP32 occupies 64 KiB in L0C, within one Cube
+    // accumulator, and avoids four independent Fixpipe operations.
+    static constexpr uint32_t kMaxN = MaxN;
     // BaseK is selected per caller: ChunkMix uses a complete 64-column tile
     // to reduce control, while StateEpilogue retains the pipelined 16-column
     // tile that performs better for its chunk-stream schedule.
@@ -41,6 +45,42 @@ public:
         uint32_t nTotal = kBaseN)
     {
         auto c1 = c1Queue_.AllocTensor<OutType>();
+        AccumulateBlock(c1, a, b, kTotal, lda, ldb, true, nTotal);
+        StoreAccumulator(c1, c, ldc, nTotal);
+    }
+
+    // Preserve FP32 accumulation in L0C while reducing the GM rendezvous
+    // between Cube and Vector to FP16.  This is intended for internal
+    // producer/consumer workspaces; public outputs continue to use the
+    // regular FP32 path above.
+    __aicore__ inline void ComputeBlockToHalf(
+        const AscendC::GlobalTensor<InType> &a,
+        const AscendC::GlobalTensor<InType> &b,
+        const AscendC::GlobalTensor<half> &c,
+        uint32_t kTotal, uint32_t lda, uint32_t ldb, uint32_t ldc,
+        uint32_t nTotal = kBaseN)
+    {
+        auto c1 = c1Queue_.AllocTensor<OutType>();
+        AccumulateBlock(c1, a, b, kTotal, lda, ldb, true, nTotal);
+        c1Queue_.EnQue(c1);
+        CopyOutHalf(c, ldc, nTotal);
+    }
+
+    // Explicit accumulator lifetime for a sequence of GEMMs that contribute
+    // to the same 64xN output.  The first call initializes L0C; following
+    // calls retain it.  Fixpipe runs only once in StoreAccumulator.
+    __aicore__ inline AscendC::LocalTensor<OutType> AllocAccumulator()
+    {
+        return c1Queue_.AllocTensor<OutType>();
+    }
+
+    __aicore__ inline void AccumulateBlock(
+        const AscendC::LocalTensor<OutType> &c1,
+        const AscendC::GlobalTensor<InType> &a,
+        const AscendC::GlobalTensor<InType> &b,
+        uint32_t kTotal, uint32_t lda, uint32_t ldb,
+        bool initialize, uint32_t nTotal = kBaseN)
+    {
         const uint32_t kTiles = kTotal / kBaseK;
 
         for (uint32_t outer = 0; outer < kTiles; outer += kL1Prefetch) {
@@ -57,12 +97,19 @@ public:
             for (uint32_t i = 0; i < count; ++i) {
                 SplitA(a1, i * kBaseMK, kBaseM);
                 SplitB(b1, i * kBaseK * kC0, kLen, nTotal);
-                Compute(c1, outer + i == 0, nTotal);
+                Compute(c1, initialize && outer + i == 0, nTotal);
             }
             a1Queue_.FreeTensor(a1);
             b1Queue_.FreeTensor(b1);
         }
 
+    }
+
+    __aicore__ inline void StoreAccumulator(
+        const AscendC::LocalTensor<OutType> &c1,
+        const AscendC::GlobalTensor<OutType> &c,
+        uint32_t ldc, uint32_t nTotal = kBaseN)
+    {
         c1Queue_.EnQue(c1);
         CopyOut(c, ldc, nTotal);
     }
@@ -175,6 +222,35 @@ private:
         params.srcNdStride = 0;
         params.dstNdStride = 0;
         AscendC::Fixpipe(dst, src, params);
+        // c1Queue_ has a single L0C slot and ComputeBlock is called several
+        // times back-to-back.  Fixpipe is asynchronous with respect to the
+        // next Mmad, so do not release/reuse L0C until its GM write completed.
+        event_t eventId = static_cast<event_t>(
+            GetTPipePtr()->FetchEventID(AscendC::HardEvent::FIX_M));
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(eventId);
+        c1Queue_.FreeTensor(src);
+    }
+
+    __aicore__ inline void CopyOutHalf(
+        const AscendC::GlobalTensor<half> &dst, uint32_t ldc,
+        uint32_t nTotal)
+    {
+        auto src = c1Queue_.DeQue<OutType>();
+        AscendC::FixpipeParamsV220 params;
+        params.nSize = nTotal;
+        params.mSize = kBaseM;
+        params.srcStride = kBaseM;
+        params.dstStride = ldc;
+        params.ndNum = 1;
+        params.srcNdStride = 0;
+        params.dstNdStride = 0;
+        params.quantPre = QuantMode_t::F322F16;
+        AscendC::Fixpipe(dst, src, params);
+        event_t eventId = static_cast<event_t>(
+            GetTPipePtr()->FetchEventID(AscendC::HardEvent::FIX_M));
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(eventId);
         c1Queue_.FreeTensor(src);
     }
 

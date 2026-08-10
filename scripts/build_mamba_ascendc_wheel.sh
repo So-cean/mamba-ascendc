@@ -10,9 +10,17 @@ extension_root="${repo_root}/mamba_ascendc"
 package_root="${extension_root}/python/ascend_kernel/ascend_kernel"
 opp_staging="${package_root}/opp"
 wheel_output="${MAMBA_WHEEL_OUTPUT_DIR:-${repo_root}/dist}"
+compute_unit="${MAMBA_ASCEND_COMPUTE_UNIT:-ascend910b}"
+soc_version="${MAMBA_ASCEND_SOC_VERSION:-Ascend910_9382}"
 
-if [[ -z "${ASCEND_HOME_PATH:-}" || ! -f "${ASCEND_HOME_PATH}/version.cfg" ]]; then
-    echo "Activate the CANN conda environment before building the wheel." >&2
+if [[ -z "${ASCEND_HOME_PATH:-}" ]]; then
+    echo "Source the selected CANN set_env.sh before building the wheel." >&2
+    exit 1
+fi
+if [[ ! -f "${ASCEND_HOME_PATH}/version.cfg" &&
+      ! -f "${ASCEND_HOME_PATH}/share/info/runtime/version.info" &&
+      ! -f "${ASCEND_HOME_PATH}/opp/version.info" ]]; then
+    echo "Invalid CANN Toolkit path: ${ASCEND_HOME_PATH}." >&2
     exit 1
 fi
 python -c 'import torch, torch_npu, wheel' >/dev/null
@@ -27,7 +35,7 @@ cleanup_staging
 mkdir -p "${opp_staging}" "${wheel_output}"
 
 pushd "${ops_root}" >/dev/null
-./build.sh
+ASCEND_COMPUTE_UNIT="${compute_unit}" ./build.sh
 opp_installer="$(find build_out -maxdepth 2 -type f -name 'custom_opp_*.run' -print -quit)"
 if [[ -z "${opp_installer}" ]]; then
     echo "Custom OPP installer was not produced." >&2
@@ -37,10 +45,10 @@ fi
 popd >/dev/null
 
 test -f "${opp_staging}/vendors/customize/op_api/lib/libcust_opapi.so"
-test -d "${opp_staging}/vendors/customize/op_impl/ai_core/tbe/kernel/ascend910b"
+test -d "${opp_staging}/vendors/customize/op_impl/ai_core/tbe/kernel/${compute_unit}"
 
 pushd "${extension_root}" >/dev/null
-./build.sh
+MAMBA_ASCENDC_DEV_BUILD=0 ./build.sh "${soc_version}"
 wheel_path="$(find output -maxdepth 1 -type f -name 'mamba_ascendc-*.whl' -print -quit)"
 if [[ -z "${wheel_path}" ]]; then
     echo "mamba-ascendc wheel was not produced." >&2

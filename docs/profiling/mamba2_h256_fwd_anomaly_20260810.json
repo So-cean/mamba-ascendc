@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "dominant_group_id": "mamba2_h256_fwd",
+  "global_device_gap_analysis": {
+    "capture_span_ms": 169.83525,
+    "device_busy_union_ms": 169.816,
+    "device_gap_ms": 0.01925,
+    "device_gap_ratio": 0.000113345,
+    "largest_gap_ms": 0.0015,
+    "top_gap_windows": []
+  },
+  "step_group_anomalies": [
+    {
+      "group_id": "mamba2_h256_fwd",
+      "group_size": 5,
+      "service_ms_avg": 33.9664,
+      "device_busy_union_ms_avg": 33.9632656,
+      "underfeed_ratio_avg": 0.00009227,
+      "prelaunch_gap_ms_avg": 0.0,
+      "tail_gap_ms_avg": 0.0,
+      "internal_bubble_total_ms_avg": 0.0031344,
+      "largest_internal_bubble_ms_p95": 0.00145,
+      "recurring_bubble_pattern": false,
+      "dominant_idle_pattern": "none",
+      "dominant_anomaly_tags": [],
+      "requires_followup": false
+    }
+  ],
+  "bubble_windows": [],
+  "wait_anchor_ops": [],
+  "soft_root_cause_summary": [
+    {
+      "label": "device_kernel_bound",
+      "confidence": "high",
+      "scope": "group",
+      "target_id": "mamba2_h256_fwd",
+      "evidence": [
+        "Mean internal device gap is 0.0031344 ms across a 33.9664 ms service interval.",
+        "Mean underfeed ratio is 0.009227% and the largest observed gap is 0.0015 ms.",
+        "The four forward stages account for the active-step wall time; no host or communication bubble crosses the anomaly threshold."
+      ]
+    },
+    {
+      "label": "state_epilogue_data_movement_pressure",
+      "confidence": "high",
+      "scope": "step",
+      "target_id": "Mamba2SsdStateEpilogueTrain",
+      "evidence": [
+        "Level2 AIV MTE2 activity is 76.467% while AIC MAC ratio is 2.9%.",
+        "Cube activity is 98.3364%, showing that active Cube scheduling is not equivalent to effective MAC work."
+      ]
+    }
+  ],
+  "requires_host_followup": false,
+  "confidence": "high"
+}

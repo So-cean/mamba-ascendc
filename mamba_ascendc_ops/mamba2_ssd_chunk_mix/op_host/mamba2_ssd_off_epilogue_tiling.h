@@ -14,6 +14,7 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
 TILING_DATA_FIELD_DEF(uint32_t, workspaceBytesPerCore);
 TILING_DATA_FIELD_DEF(uint32_t, headsPerGroup);
 TILING_DATA_FIELD_DEF(uint32_t, taskMode);
+TILING_DATA_FIELD_DEF(uint32_t, aivPerAic);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(Mamba2SsdOffEpilogue,

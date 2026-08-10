@@ -11,13 +11,16 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
+import ascend_kernel  # noqa: E402
 
-library_path = os.environ.get("MAMBA_CHUNK_MIX_OP_API_LIB")
-if not library_path:
-    raise RuntimeError("MAMBA_CHUNK_MIX_OP_API_LIB must point to libcust_opapi.so")
+# The installed wheel discovers and preloads its bundled custom OPP at import
+# time.  Keep the explicit handle for standalone source-tree runs, but do not
+# require cluster-specific environment variables from users.
+library_path = os.environ.get(
+    "MAMBA_CHUNK_MIX_OP_API_LIB", ascend_kernel.get_op_api_library_path()
+)
 ctypes.CDLL(library_path, mode=ctypes.RTLD_GLOBAL)
 
-import ascend_kernel  # noqa: E402
 from mamba_torch.ssd_reference import ssd_chunk_scan_ref  # noqa: E402
 
 
@@ -132,8 +135,24 @@ def _run(case_id: int, shape, variant: str):
         "initial_states": case["initial_states"],
     }
     implementation = importlib.import_module("ascend_kernel.mamba2")
-    if not implementation._can_use_chunk_mix_path(args[0], args[3], chunk_size):
-        raise AssertionError(f"case {case_id} did not select the Cube/MIX path")
+    selected = (
+        implementation._can_use_grouped_path(
+            args[0], args[3], chunk_size, case["D"], case["z"]
+        )
+        or implementation._can_use_chunk_mix_path(
+            args[0], args[3], chunk_size
+        )
+        or (
+            implementation._is_ascend950(args[0])
+            and implementation._can_use_aligned_path(
+                args[0], args[3], chunk_size
+            )
+        )
+    )
+    if not selected:
+        raise AssertionError(
+            f"case {case_id} did not select an optimized forward path"
+        )
     with torch.no_grad():
         expected_out, expected_state = ssd_chunk_scan_ref(
             *args, chunk_size, return_final_state=True, **kwargs
@@ -180,12 +199,10 @@ def main():
     report_root.mkdir(parents=True, exist_ok=True)
     json_path = Path(
         os.environ.get("MAMBA_CUBE_MIX_PRECISION_JSON")
-        or os.environ.get("MAMBA_V2_PRECISION_JSON")
         or report_root / "mamba2_ascendc_cube_mix_precision.json"
     )
     md_path = Path(
         os.environ.get("MAMBA_CUBE_MIX_PRECISION_MD")
-        or os.environ.get("MAMBA_V2_PRECISION_MD")
         or report_root / "mamba2_ascendc_cube_mix_precision.md"
     )
     json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,7 +217,8 @@ def main():
         f"- Failed: {len(results) - passed}",
         f"- Gate: max abs <= `{MAX_ABS_LIMIT}`, NRMSE <= `{NRMSE_LIMIT}`, "
         f"cosine >= `{COSINE_LIMIT}`, finite.",
-        "- Every case asserts that public dispatch selected the Cube/MIX path.",
+        "- Every case asserts that public dispatch selected an optimized "
+        "platform path (grouped/Cube-MIX on 910B3; grouped/aligned on 950PR).",
         "",
         "| ID | Shape `[B,L,H,P,N,C,G]` | Variant | Out max | Out NRMSE | "
         "Out cosine | State max | State NRMSE | State cosine | Result |",
