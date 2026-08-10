@@ -1,0 +1,54 @@
+name: Performance report
+description: Report a reproducible performance regression or optimization opportunity.
+title: "[Performance] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Performance comparisons must use the same operator semantics, shape, dtype, optional inputs, synchronization method, warmup, and repeat count.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Device
+      options:
+        - Ascend 910B3
+        - Ascend 950PR
+        - NVIDIA A100 80GB
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Software environment
+      description: Include driver, CANN/CUDA, PyTorch, torch_npu, Triton-Ascend, and mamba_ssm versions as applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Benchmark protocol
+      description: Include the full shape, dtype, feature flags, timing API, warmup, repeat count, and statistic.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: Include latency/throughput and the exact baseline implementation.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: profiling
+    attributes:
+      label: Profiling evidence
+      description: Include the relevant msprof/torch profiler summary such as kernel breakdown, MAC ratio, MTE traffic, and utilization.
+      render: text

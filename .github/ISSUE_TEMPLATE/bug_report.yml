@@ -1,0 +1,69 @@
+name: Correctness or build issue
+description: Report a reproducible precision, runtime, build, or packaging problem.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove private paths, credentials, scheduler job IDs, and complete profiler archives before submitting.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Ascend 910B3
+        - Ascend 950PR
+        - NVIDIA A100
+        - CPU reference
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Software environment
+      description: Include OS, Python, PyTorch, torch_npu, CANN, and Triton-Ascend versions as applicable.
+      placeholder: |
+        OS: Ubuntu 22.04
+        Python: 3.11
+        PyTorch / torch_npu:
+        CANN:
+        Triton-Ascend:
+    validations:
+      required: true
+
+  - type: textarea
+    id: case
+    attributes:
+      label: Operator case
+      description: Include B, L, H, P, N, chunk size, groups, dtype, optional inputs, and forward/backward mode.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Provide the shortest command or Python snippet that reproduces the issue.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+      description: For precision issues, include max absolute/relative error and the tolerance.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste only the relevant error or profiler summary, with private information removed.
+      render: text

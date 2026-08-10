@@ -1,5 +1,7 @@
 # Mamba-2 SSD for Ascend NPU
 
+[![CPU CI](https://github.com/So-cean/mamba-ascendc/actions/workflows/ci.yml/badge.svg)](https://github.com/So-cean/mamba-ascendc/actions/workflows/ci.yml)
+
 Mamba-2 Structured State Space Duality（SSD）核心算子的 PyTorch reference、
 Triton-Ascend 和 AscendC 实现。AscendC 是当前 NPU 主路径；仓库同时提供
 A100 `mamba_ssm` 对照、forward/backward 精度测试、device-event benchmark、
@@ -390,6 +392,10 @@ python benchmarks/plot_readme_figures.py
 
 benchmark 口径、字段和更多命令见 [`benchmarks/README.md`](benchmarks/README.md)。
 
+公开 GitHub Actions 验证 CPU reference、纯 Vision-Mamba2 forward、Python
+源码语法和 README 图表可复现性。AscendC 编译、NPU 精度与 msprof profiling
+需要 910B3/950PR 专用环境，按上面的源码候选流程执行。
+
 ## 当前限制与后续工作
 
 - Public dtype 当前为 FP32；Cube 内部使用 FP16 operand。
@@ -409,3 +415,5 @@ benchmark 口径、字段和更多命令见 [`benchmarks/README.md`](benchmarks/
 - [Ascend/triton-ascend](https://github.com/Ascend/triton-ascend)
 - [Ascend/samples](https://github.com/Ascend/samples) — AscendC 自定义算子样例
 - [MzeroMiko/VMamba](https://github.com/MzeroMiko/VMamba)
+
+提交问题或改动前请阅读 [`CONTRIBUTING.md`](CONTRIBUTING.md)。

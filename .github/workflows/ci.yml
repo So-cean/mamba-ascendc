@@ -1,0 +1,54 @@
+name: CPU CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpu-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  TORCH_DEVICE_BACKEND_AUTOLOAD: "0"
+
+jobs:
+  reference-and-repository-checks:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: .github/requirements-ci.txt
+
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r .github/requirements-ci.txt
+
+      - name: Validate Python syntax
+        run: git ls-files '*.py' -z | xargs -0 python -m py_compile
+
+      - name: Run CPU reference and Vision-Mamba2 tests
+        run: |
+          pytest -q \
+            tests/mamba2/test_reference.py \
+            tests/mamba2/test_vmamba2_network.py
+
+      - name: Verify README figures are reproducible
+        run: |
+          python benchmarks/plot_readme_figures.py
+          git diff --exit-code -- assets/

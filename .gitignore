@@ -72,24 +72,8 @@ Desktop.ini
 *.swo
 *~
 
-# Project-specific workspace file
-MRIxFields2026-Dev.code-workspace
-
 # Checkpoints (progress notes)
 \#CHECKPOINTS/
-
-# ---- Data files (MRI / medical imaging) ----
-*.h5
-*.hdf5
-*.npy
-*.npz
-*.mat
-*.nii
-*.nii.gz
-*.dcm
-*.mha
-*.mhd
-*.raw
 
 # ---- Model weights / checkpoints ----
 *.pth
@@ -141,23 +125,15 @@ tensorboard/
 /kernel_meta/
 /mindstudio_sanitizer_log/
 
-# Data directories (anchored to repo root — must NOT match Baseline/mrixfields/data/)
+# Local datasets
 /data/
-/preprocessed/
-
-# Baseline output directories
-Baseline/preprocessed/
-Baseline/predictions/
 
 # Temporary files
 tmp/
 temp/
 
-# Training logs
+# Training and profiler logs
 *.log
-
-# Debug configs (generated for testing)
-Baseline/configs/debug_*.yaml
 
 # Reference repos and materials (not part of the release)
 reference/
