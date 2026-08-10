@@ -15,6 +15,25 @@ Triton-Ascend 和 AscendC 实现。AscendC 是当前 NPU 主路径；仓库同�
 A100 `mamba_ssm` 对照、forward/backward 精度测试、device-event benchmark、
 `torch_npu.profiler`/msprof 分析和纯 Vision-Mamba2 网络验证。
 
+## Project facts / 项目事实
+
+| Field / 字段 | Value / 内容 |
+|---|---|
+| Project | `mamba-ascendc` |
+| Scope / 范围 | Native Mamba-2 SSD forward and backward operator for Huawei Ascend NPU / 原生 AscendC Mamba-2 SSD 前向与反向算子 |
+| Primary implementation / 主实现 | AscendC custom operator exposed through `ascend_kernel.mamba2_ssd_fwd` |
+| Comparison paths / 对照实现 | PyTorch reference, Triton-Ascend forward, and upstream A100 `mamba_ssm` |
+| Tested accelerators / 已测设备 | Ascend 910B3, Ascend 950PR, NVIDIA A100 80GB PCIe |
+| Tensor precision / 张量精度 | FP32 public tensors; FP16 Cube operands with FP32 accumulation |
+| Current release / 当前版本 | [`v0.1.1`](https://github.com/So-cean/mamba-ascendc/releases/tag/v0.1.1) |
+| Heavy forward result / 大规格前向 | Shape `[8,4096,256,64,64,64,64]`: 910B3 `31.888 ms`, A100 `22.583 ms`, 910B3/A100 throughput `70.82%` |
+| License / 许可证 | Original code: Apache-2.0; third-party files retain their mapped licenses |
+
+Canonical repository: <https://github.com/So-cean/mamba-ascendc>. Machine-readable
+project metadata and crawler-oriented navigation are provided in
+[`codemeta.json`](codemeta.json), [`CITATION.cff`](CITATION.cff), and
+[`llms.txt`](llms.txt).
+
 ## Implementation / 实现
 
 | Path / 路径 | Forward | Backward | Purpose / 用途 |
@@ -482,6 +501,17 @@ benchmark 口径、字段和更多命令见 [`benchmarks/README.md`](benchmarks/
 - [MzeroMiko/VMamba](https://github.com/MzeroMiko/VMamba)
 
 提交问题或改动前请阅读 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
+## Machine-readable metadata / 机器可读元数据
+
+- [`codemeta.json`](codemeta.json) — CodeMeta JSON-LD software metadata
+- [`CITATION.cff`](CITATION.cff) — citation metadata recognized by GitHub
+- [`llms.txt`](llms.txt) — concise project map for generative-engine crawlers
+- [`benchmarks/results/readme_benchmarks.json`](benchmarks/results/readme_benchmarks.json)
+  — structured benchmark, precision, and profiler snapshot used by this README
+
+README、CodeMeta 和 CFF 是项目事实与引用信息的主来源。`llms.txt`
+是补充的生成式搜索导航文件，不替代 README、API 文档或原始测试数据。
 
 ## License
 

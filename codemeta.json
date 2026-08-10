@@ -1,0 +1,47 @@
+{
+  "@context": "https://w3id.org/codemeta/3.1",
+  "type": "SoftwareSourceCode",
+  "@id": "https://github.com/So-cean/mamba-ascendc",
+  "name": "mamba-ascendc",
+  "alternateName": "Mamba-2 SSD for Ascend NPU",
+  "description": "Native AscendC implementation of the Mamba-2 Structured State Space Duality forward and backward operator for Huawei Ascend NPU, with PyTorch and Triton-Ascend references, A100 baselines, accuracy tests, benchmarks, and msprof profiling artifacts.",
+  "version": "0.1.1",
+  "datePublished": "2026-08-10",
+  "codeRepository": "https://github.com/So-cean/mamba-ascendc",
+  "issueTracker": "https://github.com/So-cean/mamba-ascendc/issues",
+  "license": "https://spdx.org/licenses/Apache-2.0",
+  "programmingLanguage": [
+    "AscendC",
+    "C++",
+    "Python",
+    "Triton"
+  ],
+  "runtimePlatform": [
+    "Huawei Ascend 910B3",
+    "Huawei Ascend 950PR",
+    "CANN",
+    "PyTorch"
+  ],
+  "operatingSystem": "Linux",
+  "applicationCategory": "AI infrastructure and accelerator kernels",
+  "keywords": [
+    "Mamba-2",
+    "Structured State Space Duality",
+    "state space model",
+    "AscendC",
+    "Huawei Ascend NPU",
+    "custom operator",
+    "PyTorch",
+    "Triton-Ascend",
+    "AI infrastructure"
+  ],
+  "author": {
+    "type": "Person",
+    "name": "So-cean",
+    "url": "https://github.com/So-cean"
+  },
+  "continuousIntegration": "https://github.com/So-cean/mamba-ascendc/actions/workflows/ci.yml",
+  "developmentStatus": "active",
+  "releaseNotes": "https://github.com/So-cean/mamba-ascendc/releases/tag/v0.1.1",
+  "buildInstructions": "https://github.com/So-cean/mamba-ascendc#installation--\u5b89\u88c5"
+}
