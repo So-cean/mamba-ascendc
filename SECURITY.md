@@ -1,6 +1,6 @@
 # Security policy
 
-## Supported version
+## Supported versions
 
 Security fixes are applied to the latest release and the current `main`
 branch. The initial supported release line is `0.1.x`.

@@ -20,6 +20,7 @@ class BinaryDistribution(Distribution):
 
 WORKING_DIR = Path(__file__).resolve().parent
 PACKAGE_DIR = WORKING_DIR / "ascend_kernel"
+# setup.py lives at <repository>/mamba_ascendc/python/ascend_kernel/setup.py.
 REPOSITORY_ROOT = WORKING_DIR.parents[2]
 config = ConfigParser()
 config.read(PACKAGE_DIR / "config.ini")
