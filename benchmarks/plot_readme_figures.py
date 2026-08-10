@@ -55,11 +55,19 @@ def configure_style() -> None:
 
 def save(fig: plt.Figure, name: str) -> None:
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    svg_path = ASSET_DIR / name
     fig.savefig(
-        ASSET_DIR / name,
+        svg_path,
         format="svg",
         bbox_inches="tight",
-        metadata={"Date": None, "Creator": "mamba-triton-ascend"},
+        metadata={"Date": None, "Creator": "mamba-ascendc"},
+    )
+    # Matplotlib writes trailing spaces in multiline SVG path data. Normalize the
+    # generated asset so repeated figure generation keeps the Git diff clean.
+    svg_text = svg_path.read_text(encoding="utf-8")
+    svg_path.write_text(
+        "\n".join(line.rstrip() for line in svg_text.splitlines()) + "\n",
+        encoding="utf-8",
     )
     if preview_dir := os.environ.get("MAMBA_README_PREVIEW_DIR"):
         preview_path = Path(preview_dir)

@@ -1,4 +1,4 @@
-# Copyright (c) 2026, mamba-triton-ascend authors.
+# Copyright (c) 2026, mamba-ascendc authors.
 # Tests for Mamba-2 SSD PyTorch reference implementation.
 
 import torch

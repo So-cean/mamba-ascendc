@@ -1,4 +1,4 @@
-# Copyright (c) 2026, mamba-triton-ascend authors.
+# Copyright (c) 2026, mamba-ascendc authors.
 # pytest fixtures for Mamba-2 tests.
 
 import pytest

@@ -240,8 +240,8 @@ Backward 报告：
 构建并安装包含 custom OPP 的 wheel：
 
 ```bash
-git clone https://github.com/So-cean/mamba-triton-ascend.git
-cd mamba-triton-ascend
+git clone https://github.com/So-cean/mamba-ascendc.git
+cd mamba-ascendc
 
 export ASCEND_HOME_PATH=/path/to/ascend-toolkit/latest
 bash scripts/build_mamba_ascendc_wheel.sh

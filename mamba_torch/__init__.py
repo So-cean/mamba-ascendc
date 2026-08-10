@@ -1,4 +1,4 @@
-# Copyright (c) 2026, mamba-triton-ascend authors.
+# Copyright (c) 2026, mamba-ascendc authors.
 # PyTorch reference implementation for Mamba-2 SSD (State Space Duality).
 # No einops dependency — pure PyTorch operations for maximal portability.
 

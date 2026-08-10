@@ -1,4 +1,4 @@
-# Copyright (c) 2026, mamba-triton-ascend authors.
+# Copyright (c) 2026, mamba-ascendc authors.
 # PyTorch reference for Mamba-2 SSD chunk scan.
 # Interface compatible with mamba_ssm.ops.triton.ssd_combined.mamba_chunk_scan_combined.
 # No einops dependency; all operations use vanilla torch.

@@ -1,4 +1,4 @@
-# Copyright (c) 2024, mamba-triton-ascend authors.
+# Copyright (c) 2024, mamba-ascendc authors.
 # pytest fixtures for NPU test suite.
 
 import os
