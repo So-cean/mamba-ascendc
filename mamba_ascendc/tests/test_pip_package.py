@@ -90,6 +90,31 @@ def test_isolated_wheel_install():
     state_metrics = _metrics(final_state, ref_state)
     assert out_metrics["nrmse"] <= 5e-3
     assert state_metrics["nrmse"] <= 7e-3
+
+    # Exercise public autograd from the isolated install as well as forward.
+    cpu_core = (x, dt, A, B, C)
+    ref_values = tuple(value.detach().requires_grad_(True) for value in cpu_core)
+    ref_train_out = ssd_chunk_scan_ref(*ref_values, 64)
+    grad_generator = torch.Generator(device="cpu").manual_seed(20260804)
+    dout = torch.randn(ref_train_out.shape, generator=grad_generator)
+    ref_grads = torch.autograd.grad(ref_train_out, ref_values, dout)
+
+    npu_values = tuple(
+        value.npu().contiguous().detach().requires_grad_(True)
+        for value in cpu_core
+    )
+    train_out = ascend_kernel.mamba2_ssd_fwd(*npu_values, 64)
+    npu_grads = torch.autograd.grad(train_out, npu_values, dout.npu())
+    torch.npu.synchronize()
+    grad_metrics = {
+        name: _metrics(actual, expected)
+        for name, actual, expected in zip(
+            ("dx", "ddt", "dA", "dB", "dC"), npu_grads, ref_grads
+        )
+    }
+    for name, metrics in grad_metrics.items():
+        assert metrics["nrmse"] <= 1e-2, f"{name}: {metrics}"
+
     print(
         json.dumps(
             {
@@ -97,6 +122,7 @@ def test_isolated_wheel_install():
                 "runtime": info,
                 "out": out_metrics,
                 "final_state": state_metrics,
+                "gradients": grad_metrics,
             },
             indent=2,
         )

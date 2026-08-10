@@ -12,6 +12,7 @@ hardware:
 export TORCH_DEVICE_BACKEND_AUTOLOAD=0
 pytest -q tests/mamba2/test_reference.py tests/mamba2/test_vmamba2_network.py
 git ls-files '*.py' -z | xargs -0 python -m py_compile
+git ls-files '*.py' -z | xargs -0 ruff check --force-exclude
 python benchmarks/plot_readme_figures.py
 git diff --exit-code -- assets/
 ```
@@ -51,3 +52,7 @@ job IDs, complete raw profiler archives, generated OPP packages, wheels, or buil
 trees. Keep final reproducible benchmark data in
 `benchmarks/results/readme_benchmarks.json` and regenerate figures with
 `benchmarks/plot_readme_figures.py`.
+
+Ruff and clang-format are enforced incrementally for project-owned files changed
+by a pull request. Upstream Mamba sources, generated CANN/msOpGen scaffold, and
+generated benchmark artifacts are excluded from formatting enforcement.

@@ -114,6 +114,7 @@ tensorboard/
 /mamba_ascendc/output/
 /mamba_ascendc/python/ascend_kernel/ascend_kernel/lib/
 /mamba_ascendc/python/ascend_kernel/ascend_kernel/opp/
+/mamba_ascendc/python/ascend_kernel/ascend_kernel/licenses/
 /mamba_ascendc/python/ascend_kernel/*.egg-info/
 /mamba_ascendc_ops/**/build_out/
 /mamba_ascendc_ops/**/install/

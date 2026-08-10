@@ -42,6 +42,11 @@ jobs:
       - name: Validate Python syntax
         run: git ls-files '*.py' -z | xargs -0 python -m py_compile
 
+      - name: Lint changed project sources
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bash scripts/check_changed_sources.sh "${BASE_SHA}" "${GITHUB_SHA}"
+
       - name: Run CPU reference and Vision-Mamba2 tests
         run: |
           pytest -q \
