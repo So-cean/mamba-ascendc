@@ -486,6 +486,8 @@ benchmark 口径、字段和更多命令见 [`benchmarks/README.md`](benchmarks/
 ## License
 
 项目自研代码采用 [Apache License 2.0](LICENSE)。来自 Mamba、Ascend
-custom-operator scaffold 和 Makeself 的文件保留各自原始许可与版权声明，详见
-[`NOTICE`](NOTICE) 和 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+agent-skills、Ascend custom-operator scaffold 和 Makeself 的文件保留各自原始
+许可与版权声明；其中 ACLNN helper 使用
+[Mulan PSL 2.0](LICENSES/MulanPSL-2.0.txt)。完整映射见 [`NOTICE`](NOTICE) 和
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 安全问题请按 [`SECURITY.md`](SECURITY.md) 私下报告。

@@ -4,6 +4,10 @@ Copyright 2026 mamba-ascendc authors
 This product includes software derived from state-spaces/mamba,
 Copyright 2023-2024 Tri Dao and Albert Gu, licensed under Apache-2.0.
 
+This product includes an Ascend PyTorch/ACLNN helper copied from the
+Ascend/agent-skills project, Copyright Huawei Technologies Co., Ltd., licensed
+under the Mulan Permissive Software License, Version 2.
+
 This product includes generated Ascend custom-operator build scaffolding and
 helper code carrying Huawei Technologies Co., Ltd. copyright notices. The
 license notice in each such file remains controlling for that file.
