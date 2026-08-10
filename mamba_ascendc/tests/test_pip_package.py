@@ -33,7 +33,7 @@ def test_isolated_wheel_install():
     if expected_root:
         assert package_root.is_relative_to(Path(expected_root).resolve())
 
-    assert importlib.metadata.version("mamba-ascendc") == "0.1.0"
+    assert importlib.metadata.version("mamba-ascendc") == "0.1.1"
     assert Path(info["op_api_library"]).is_file()
     assert Path(info["extension_library"]).is_file()
     assert info["custom_opp_path"] in os.environ["ASCEND_CUSTOM_OPP_PATH"]

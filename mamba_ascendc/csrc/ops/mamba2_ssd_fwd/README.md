@@ -122,7 +122,7 @@ python benchmarks/mamba2_npu_final_bench.py --cases medium extreme --skip-precis
 ```bash
 export ASCEND_HOME_PATH=/path/to/ascend-toolkit/latest
 bash scripts/build_mamba_ascendc_wheel.sh
-python -m pip install dist/mamba_ascendc-0.1.0-*.whl --no-deps
+python -m pip install dist/mamba_ascendc-*.whl --no-deps
 ```
 
 wheel 已携带 custom OPP 与 ACLNN bridge。`import ascend_kernel` 会自动配置

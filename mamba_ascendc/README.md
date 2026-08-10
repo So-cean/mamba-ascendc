@@ -37,7 +37,7 @@ ascend_kernel.mamba2_ssd_fwd
 ```bash
 export ASCEND_HOME_PATH=/path/to/ascend-toolkit/latest
 scripts/build_mamba_ascendc_wheel.sh
-python -m pip install dist/mamba_ascendc-0.1.0-*.whl --no-deps
+python -m pip install dist/mamba_ascendc-*.whl --no-deps
 ```
 
 wheel 包含 OPS kernel binary、custom OPP、`libcust_opapi.so` 和

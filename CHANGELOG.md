@@ -4,7 +4,7 @@ All notable public changes are recorded here. Versions follow Semantic
 Versioning for the Python API; kernel coverage remains subject to the support
 matrix documented in the README.
 
-## [Unreleased]
+## [0.1.1] - 2026-08-10
 
 ### Fixed
 
@@ -49,5 +49,5 @@ Initial public release.
   target SoC and CANN toolchain. Build the wheel in the target Ascend
   environment with `scripts/build_mamba_ascendc_wheel.sh`.
 
-[Unreleased]: https://github.com/So-cean/mamba-ascendc/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/So-cean/mamba-ascendc/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/So-cean/mamba-ascendc/releases/tag/v0.1.0
