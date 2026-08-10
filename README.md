@@ -312,7 +312,7 @@ cd mamba-ascendc
 
 export ASCEND_HOME_PATH=/path/to/ascend-toolkit/latest
 bash scripts/build_mamba_ascendc_wheel.sh
-python -m pip install dist/mamba_ascendc-0.1.0-*.whl --no-deps
+python -m pip install dist/mamba_ascendc-*.whl --no-deps
 ```
 
 wheel 包含 operator binary、custom OPP、`libcust_opapi.so` 和
