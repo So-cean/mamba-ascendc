@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "mamba-ascendc: Mamba-2 SSD for Ascend NPU"
+type: software
+version: 0.1.1
+date-released: 2026-08-10
+authors:
+  - name: So-cean
+    website: "https://github.com/So-cean"
+abstract: >-
+  Native AscendC implementation of the Mamba-2 Structured State Space
+  Duality forward and backward operator for Huawei Ascend NPU, with PyTorch
+  and Triton-Ascend references, A100 baselines, accuracy tests, benchmarks,
+  and msprof profiling artifacts.
+keywords:
+  - Mamba-2
+  - structured state space model
+  - AscendC
+  - Huawei Ascend NPU
+  - custom operator
+  - PyTorch
+  - Triton-Ascend
+  - AI infrastructure
+license: Apache-2.0
+repository-code: "https://github.com/So-cean/mamba-ascendc"
+url: "https://github.com/So-cean/mamba-ascendc/releases/tag/v0.1.1"

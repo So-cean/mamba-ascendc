@@ -1,0 +1,66 @@
+# mamba-ascendc
+
+> Native AscendC implementation of the Mamba-2 Structured State Space Duality (SSD) forward and backward operator for Huawei Ascend NPU.
+
+Canonical repository: https://github.com/So-cean/mamba-ascendc
+Current release: v0.1.1
+Primary language/runtime: AscendC, C++, Python, PyTorch, CANN
+License for original code: Apache-2.0
+
+## Core facts
+
+- The primary NPU implementation is a native AscendC custom operator, not a Triton port.
+- The repository includes PyTorch reference, Triton-Ascend forward, AscendC forward/backward, and upstream A100 mamba_ssm comparison paths.
+- Tested accelerators are Ascend 910B3, Ascend 950PR, and NVIDIA A100 80GB PCIe.
+- Public tensors are FP32. Cube operations use FP16 operands with FP32 accumulation internally.
+- The high-performance M1 backward path currently requires contiguous FP32 tensors and P=N=chunk_size=64.
+
+## Public API
+
+- AscendC: `from ascend_kernel import mamba2_ssd_fwd`
+- PyTorch reference: `from mamba_torch import ssd_chunk_scan_ref`
+- Triton-Ascend: `from mamba_triton_ascend.mamba2 import mamba_chunk_scan_combined`
+- The public tensor semantics follow `mamba_ssm.ops.triton.ssd_combined.mamba_chunk_scan_combined`.
+
+## Performance snapshot
+
+- Heavy forward shape order: B,L,H,P,N,chunk,G.
+- Heavy forward shape: [8,4096,256,64,64,64,64].
+- Ascend 910B3 AscendC forward median: 31.888 ms.
+- NVIDIA A100 80GB PCIe upstream mamba_ssm forward median: 22.583 ms.
+- Ascend 910B3 relative throughput for this identical workload: 70.82% of A100.
+- Timing uses device events, warmup=10, repeat=30, and median latency.
+- The repository does not normalize results with vendor theoretical TFLOPS.
+
+## Documentation
+
+- [README and usage](https://github.com/So-cean/mamba-ascendc#readme)
+- [Source layout](https://github.com/So-cean/mamba-ascendc/blob/main/docs/source-layout.md)
+- [Benchmark methods](https://github.com/So-cean/mamba-ascendc/blob/main/benchmarks/README.md)
+- [H256 forward profiling report](https://github.com/So-cean/mamba-ascendc/blob/main/docs/profiling/model_architecture_report_profile_fwd_h256_910b3_final_20260810.md)
+- [Structured benchmark and profiler data](https://github.com/So-cean/mamba-ascendc/blob/main/benchmarks/results/readme_benchmarks.json)
+- [CodeMeta software metadata](https://github.com/So-cean/mamba-ascendc/blob/main/codemeta.json)
+- [Citation metadata](https://github.com/So-cean/mamba-ascendc/blob/main/CITATION.cff)
+- [License and third-party notices](https://github.com/So-cean/mamba-ascendc/blob/main/THIRD_PARTY_NOTICES.md)
+
+## Source entry points
+
+- `mamba_ascendc/`: public API, autograd, Vector/fallback kernels, and PyTorch extension.
+- `mamba_ascendc_ops/`: AscendC Cube/MIX custom operator projects.
+- `mamba_triton_ascend/mamba2/`: Triton-Ascend forward implementation.
+- `mamba_torch/`: mathematical reference and pure Vision-Mamba2 integration.
+- `benchmarks/`: A100, Ascend, scaling, and profiler entry points.
+- `tests/mamba2/`: reference, GPU, Triton-Ascend, and integration tests.
+
+## Current constraints
+
+- M1 backward supports contiguous FP32 with P=N=chunk_size=64.
+- Variable-length and packed sequences are not implemented.
+- BF16 and additional N/chunk_size combinations remain roadmap items.
+- NPU compilation and msprof reproduction require the documented CANN and device environment.
+
+## External references
+
+- Mamba upstream: https://github.com/state-spaces/mamba
+- Mamba-2 paper: https://arxiv.org/abs/2405.21060
+- Triton-Ascend: https://github.com/Ascend/triton-ascend

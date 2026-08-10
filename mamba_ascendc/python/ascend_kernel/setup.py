@@ -70,9 +70,20 @@ setuptools.setup(
     url="https://github.com/So-cean/mamba-ascendc",
     project_urls={
         "Source": "https://github.com/So-cean/mamba-ascendc",
+        "Documentation": "https://github.com/So-cean/mamba-ascendc#readme",
         "Issues": "https://github.com/So-cean/mamba-ascendc/issues",
         "Benchmarks": "https://github.com/So-cean/mamba-ascendc#benchmark",
+        "Citation": "https://github.com/So-cean/mamba-ascendc/blob/main/CITATION.cff",
     },
+    keywords=[
+        "mamba-2",
+        "state-space-model",
+        "ascendc",
+        "ascend-npu",
+        "custom-operator",
+        "pytorch",
+        "ai-infrastructure",
+    ],
     packages=find_namespace_packages(
         include=("ascend_kernel", "ascend_kernel.*"), exclude=("tests*",)
     ),
