@@ -45,6 +45,18 @@ SHAPES = [
     pytest.param(1, 256, 8, 32, 64, 64, 4, id="medium"),
 ]
 
+# One representative per forward dispatch/tiling family used by the shared
+# benchmark matrix.  Keep this separate from the dtype/feature Cartesian suite
+# so adding performance shapes does not multiply the entire GPU test count.
+SHAPE_MATRIX_SMOKE = [
+    pytest.param(1, 16, 1, 8, 8, 8, 1, id="matrix-generic-tiny"),
+    pytest.param(1, 65, 4, 16, 16, 32, 2, id="matrix-generic-tail"),
+    pytest.param(1, 256, 8, 16, 32, 64, 2, id="matrix-aligned"),
+    pytest.param(1, 512, 8, 64, 64, 64, 2, id="matrix-cube-n64"),
+    pytest.param(1, 512, 8, 64, 128, 128, 2, id="matrix-cube-n128"),
+    pytest.param(1, 1024, 16, 64, 128, 256, 4, id="matrix-logical-chunk256"),
+]
+
 FEATURES = [
     pytest.param(FeatureConfig(), id="basic"),
     pytest.param(FeatureConfig(d_kind="head"), id="D-head"),
@@ -216,3 +228,92 @@ def test_cpu_reference_matches_gpu_mamba_fwd(
     torch.testing.assert_close(
         final_gpu.float(), final_cpu.float(), rtol=rtol, atol=atol
     )
+
+
+@pytest.mark.parametrize(
+    "batch,seqlen,nheads,headdim,dstate,chunk_size,ngroups",
+    SHAPE_MATRIX_SMOKE,
+)
+def test_shape_matrix_fp32_matches_gpu_mamba(
+    batch,
+    seqlen,
+    nheads,
+    headdim,
+    dstate,
+    chunk_size,
+    ngroups,
+):
+    """Validate new benchmark families with all public forward features."""
+    features = FeatureConfig(
+        d_kind="channel",
+        use_z=True,
+        use_dt_bias=True,
+        dt_softplus=True,
+        use_initial_state=True,
+        dt_limit=(0.0, float("inf")),
+    )
+    cpu_inputs = _make_cpu_inputs(
+        batch,
+        seqlen,
+        nheads,
+        headdim,
+        dstate,
+        ngroups,
+        torch.float32,
+        features,
+        seed=20260801,
+    )
+    x, dt, A, B, C, D, z, dt_bias, initial_states = cpu_inputs
+    out_cpu, final_cpu = ssd_chunk_scan_ref(
+        x,
+        dt,
+        A,
+        B,
+        C,
+        chunk_size,
+        D=D,
+        z=z,
+        dt_bias=dt_bias,
+        dt_softplus=True,
+        initial_states=initial_states,
+        return_final_state=True,
+    )
+
+    x_g, dt_g, A_g, B_g, C_g, D_g, z_g, dt_bias_g, initial_g = tuple(
+        _to_cuda(value) for value in cpu_inputs
+    )
+    with torch.no_grad():
+        out_gpu, final_gpu = mamba_chunk_scan_combined(
+            x_g,
+            dt_g,
+            A_g,
+            B_g,
+            C_g,
+            chunk_size,
+            D=D_g,
+            z=z_g,
+            dt_bias=dt_bias_g,
+            initial_states=initial_g,
+            dt_softplus=True,
+            return_final_states=True,
+        )
+    torch.cuda.synchronize()
+    out_gpu = out_gpu.cpu()
+    final_gpu = final_gpu.cpu()
+    output_metrics = _metrics(out_gpu, out_cpu)
+    final_metrics = _metrics(final_gpu, final_cpu)
+    print(
+        f"shape={[batch, seqlen, nheads, headdim, dstate, chunk_size, ngroups]} "
+        f"output={output_metrics} final_state={final_metrics}"
+    )
+    assert torch.isfinite(out_gpu).all()
+    assert torch.isfinite(final_gpu).all()
+    # Official mamba_ssm uses Triton dot/scan reductions internally.  On the
+    # larger Cube-like cases a handful of near-zero elements can miss a strict
+    # pointwise relative tolerance while the global error remains below 1e-3.
+    # Keep both global and worst-case bounds so the test cannot hide a broad
+    # regression or one unbounded outlier.
+    assert output_metrics["nrmse"] <= 1e-3
+    assert final_metrics["nrmse"] <= 1e-3
+    assert output_metrics["max_abs"] <= 1.5e-2
+    assert final_metrics["max_abs"] <= 2e-3

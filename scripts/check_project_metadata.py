@@ -100,6 +100,12 @@ def main() -> None:
     ascend_ms = gate["ascend_910b3"]["forward_ms"]
     throughput_percent = a100_ms / ascend_ms * 100
     assert round(throughput_percent, 2) == 70.82
+    matrix = benchmark["a100_inference_shape_matrix"]
+    assert matrix["cases_total"] == matrix["cases_ok"] == len(SHAPE_CASES) == 52
+    assert len(matrix["sequence_scaling"]) == 6
+    assert matrix["precision_smoke"]["cases"] == 6
+    assert matrix["precision_smoke"]["passed"] == 6
+    assert matrix["precision_smoke"]["finite"] is True
 
     facts = [
         REPOSITORY_URL,
@@ -109,6 +115,8 @@ def main() -> None:
         "31.888 ms",
         "22.583 ms",
         "70.82%",
+        "52/52",
+        "15.041 ms",
     ]
     require_text(
         ROOT / "README.md",
