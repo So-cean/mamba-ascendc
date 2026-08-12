@@ -61,6 +61,7 @@ jobs:
       - name: Run CPU reference and Vision-Mamba2 tests
         run: |
           pytest -q \
+            tests/mamba2/test_benchmark_shape_matrix.py \
             tests/mamba2/test_reference.py \
             tests/mamba2/test_vmamba2_network.py
 

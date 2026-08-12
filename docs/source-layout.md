@@ -1,5 +1,9 @@
 # Source layout and ownership
 
+This is the short source-ownership reference. The comprehensive development,
+test, benchmark, generated-artifact, and handoff guide is
+[`../STRUCTURE.md`](../STRUCTURE.md).
+
 The repository builds one public `ascend_kernel` Python package from two
 Ascend projects. They are separate build domains rather than competing
 implementations.

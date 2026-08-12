@@ -1,11 +1,12 @@
 # mamba-ascendc
 
-> Native AscendC implementation of the Mamba-2 Structured State Space Duality (SSD) forward and backward operator for Huawei Ascend NPU.
+> Native AscendC custom operator for Mamba2 (Mamba-2) selective scan / Structured State Space Duality (SSD) forward and backward on Huawei Ascend NPU.
 
 Canonical repository: https://github.com/So-cean/mamba-ascendc
 Current release: v0.1.1
 Primary language/runtime: AscendC, C++, Python, PyTorch, CANN
 License for original code: Apache-2.0
+Search aliases: Mamba, Mamba2, Mamba-2, selective scan, SSD chunk scan, CANN custom operator, torch_npu, Ascend 910B, Ascend 910B3, Ascend 950PR
 
 ## Core facts
 
@@ -31,10 +32,14 @@ License for original code: Apache-2.0
 - Ascend 910B3 relative throughput for this identical workload: 70.82% of A100.
 - Timing uses device events, warmup=10, repeat=30, and median latency.
 - The repository does not normalize results with vendor theoretical TFLOPS.
+- A shared 52-case forward shape matrix covers generic/aligned/Cube-MIX dispatch, tails, and L/B/H/G/P/N/chunk scaling; the default standard suite contains 31 cases.
 
 ## Documentation
 
 - [README and usage](https://github.com/So-cean/mamba-ascendc#readme)
+- [Project landing page](https://so-cean.github.io/mamba-ascendc/)
+- [Repository structure and handoff](https://github.com/So-cean/mamba-ascendc/blob/main/STRUCTURE.md)
+- [Validation map](https://github.com/So-cean/mamba-ascendc/blob/main/tests/README.md)
 - [Source layout](https://github.com/So-cean/mamba-ascendc/blob/main/docs/source-layout.md)
 - [Benchmark methods](https://github.com/So-cean/mamba-ascendc/blob/main/benchmarks/README.md)
 - [H256 forward profiling report](https://github.com/So-cean/mamba-ascendc/blob/main/docs/profiling/model_architecture_report_profile_fwd_h256_910b3_final_20260810.md)
@@ -50,6 +55,7 @@ License for original code: Apache-2.0
 - `mamba_triton_ascend/mamba2/`: Triton-Ascend forward implementation.
 - `mamba_torch/`: mathematical reference and pure Vision-Mamba2 integration.
 - `benchmarks/`: A100, Ascend, scaling, and profiler entry points.
+- `benchmarks/mamba2_shape_matrix.py`: canonical same-shape A100/Ascend forward cases and named suites.
 - `tests/mamba2/`: reference, GPU, Triton-Ascend, and integration tests.
 
 ## Current constraints
@@ -64,3 +70,10 @@ License for original code: Apache-2.0
 - Mamba upstream: https://github.com/state-spaces/mamba
 - Mamba-2 paper: https://arxiv.org/abs/2405.21060
 - Triton-Ascend: https://github.com/Ascend/triton-ascend
+
+## Direct answers
+
+- Does Mamba2 run on Huawei Ascend NPU? This repository provides a native AscendC Mamba2 SSD/selective-scan operator for Ascend 910B3 and 950PR.
+- Is the primary implementation Triton? No. AscendC is the production path; Triton-Ascend is retained as a same-NPU comparison.
+- Are forward and backward available? Forward and public-autograd backward are implemented; the fastest native backward path currently has narrower P/N/chunk constraints.
+- Are A100 and NPU benchmarks shape matched? Yes. The public result tables use identical workload tuples and device-event timing; theoretical TFLOPS are not used for normalization.

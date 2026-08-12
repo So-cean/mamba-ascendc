@@ -25,7 +25,7 @@ out_t    = y_t * silu(z_t)
 
 | 路径 | 条件 | 实现 |
 |---|---|---|
-| Cube/MIX | `P=64`、`N=64/128`、chunk 64/128、`L%64=0` | preprocess + chunk_mix + state epilogue |
+| Cube/MIX | `P=64`、`N=64/128`、execution micro-chunk 64/128、`L%64=0` | preprocess + chunk_mix + state epilogue |
 | aligned | 维度 16 对齐、`P*N<=8192` | preprocess/prepare + torch matmul + state passing |
 | generic | 其余合法 FP32 shape | direct recurrence kernel |
 
@@ -48,6 +48,12 @@ stateEnd   = exp(dA_last) * stateStart + chunkState
 
 Cube 使用 FP16 operands 和 FP32 accumulate。Vector 负责 softplus/exp、cumsum、
 causal mask、transpose、state recurrence、D/z epilogue。
+
+Public `chunk_size` 是 SSD logical partition 参数，不是输入 tensor shape。无梯度
+Forward 中，大于 128 且可整除的 logical chunk 会映射为多个已验证的 128-token
+或 64-token micro-chunk；例如 public `chunk_size=256` 可执行为 `2x128`。训练
+Backward 仍保持原有 chunk-64 ABI，直到 saved-state cache 按 execution chunk
+显式记录后再扩大范围。
 
 ## 4. 并行和 tiling
 

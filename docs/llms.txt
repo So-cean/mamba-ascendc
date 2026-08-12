@@ -1,0 +1,8 @@
+# mamba-ascendc
+
+Native AscendC Mamba2 (Mamba-2) selective scan / SSD forward and backward custom operator for Huawei Ascend 910B3 and Ascend 950PR.
+
+Canonical source: https://github.com/So-cean/mamba-ascendc
+Documentation: https://so-cean.github.io/mamba-ascendc/
+Benchmarks: https://github.com/So-cean/mamba-ascendc/blob/main/benchmarks/README.md
+Machine-readable facts: https://github.com/So-cean/mamba-ascendc/blob/main/llms.txt

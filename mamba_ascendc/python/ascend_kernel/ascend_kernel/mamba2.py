@@ -183,6 +183,34 @@ def _can_use_chunk_mix_path(x, B, chunk_size):
     )
 
 
+def _select_execution_chunk_size(x, B, logical_chunk_size):
+    """Map a public SSD partition to a supported Cube/MIX micro-tile.
+
+    ``chunk_size`` is an algorithmic partition parameter, not a tensor-shape
+    dimension.  The exact SSD recurrence is partition invariant, so inference
+    may execute a logical chunk as multiple smaller micro-chunks.  Keep the
+    logical value when no validated Cube/MIX tiling divides it; that preserves
+    the existing aligned/generic fallback behavior.
+    """
+    if logical_chunk_size <= 128:
+        return logical_chunk_size
+
+    chunk128_enabled = os.environ.get(
+        "MAMBA_ASCENDC_CHUNK128", "0"
+    ).lower() in {"1", "true", "yes", "on"}
+    candidates = []
+    if chunk128_enabled and B.shape[-1] == 128:
+        candidates.append(128)
+    candidates.append(64)
+    for micro_chunk in candidates:
+        if (
+            logical_chunk_size % micro_chunk == 0
+            and _can_use_chunk_mix_path(x, B, micro_chunk)
+        ):
+            return micro_chunk
+    return logical_chunk_size
+
+
 def _chunk_mix_ssd_fwd(
     x,
     dt,
@@ -596,14 +624,15 @@ def _mamba2_ssd_fwd_impl(
     ``mamba_ssm.ops.triton.ssd_combined.mamba_chunk_scan_combined``.
     The current implementation accepts contiguous FP32 NPU tensors.
     """
-    if _can_use_grouped_path(x, B, chunk_size, D, z):
+    execution_chunk_size = _select_execution_chunk_size(x, B, chunk_size)
+    if _can_use_grouped_path(x, B, execution_chunk_size, D, z):
         out, final_state = _grouped_ssd_fwd(
             x,
             dt,
             A,
             B,
             C,
-            chunk_size,
+            execution_chunk_size,
             D,
             z,
             dt_bias,
@@ -611,14 +640,14 @@ def _mamba2_ssd_fwd_impl(
             dt_limit,
             initial_states,
         )
-    elif _can_use_chunk_mix_path(x, B, chunk_size):
+    elif _can_use_chunk_mix_path(x, B, execution_chunk_size):
         out, final_state = _chunk_mix_ssd_fwd(
             x,
             dt,
             A,
             B,
             C,
-            chunk_size,
+            execution_chunk_size,
             D,
             z,
             dt_bias,
@@ -626,14 +655,14 @@ def _mamba2_ssd_fwd_impl(
             dt_limit,
             initial_states,
         )
-    elif _can_use_aligned_path(x, B, chunk_size):
+    elif _can_use_aligned_path(x, B, execution_chunk_size):
         out, final_state = _aligned_ssd_fwd(
             x,
             dt,
             A,
             B,
             C,
-            chunk_size,
+            execution_chunk_size,
             D,
             z,
             dt_bias,

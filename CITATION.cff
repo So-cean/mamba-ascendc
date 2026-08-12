@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using these metadata."
-title: "mamba-ascendc: Mamba-2 SSD for Ascend NPU"
+title: "mamba-ascendc: Mamba2 Selective Scan for Ascend NPU"
 type: software
 version: 0.1.1
 date-released: 2026-08-10
@@ -8,15 +8,22 @@ authors:
   - name: So-cean
     website: "https://github.com/So-cean"
 abstract: >-
-  Native AscendC implementation of the Mamba-2 Structured State Space
-  Duality forward and backward operator for Huawei Ascend NPU, with PyTorch
-  and Triton-Ascend references, A100 baselines, accuracy tests, benchmarks,
-  and msprof profiling artifacts.
+  Native AscendC custom operator for Mamba2 (Mamba-2) selective scan and
+  Structured State Space Duality forward/backward on Huawei Ascend 910B3 and
+  950PR, with CANN, torch_npu, Triton-Ascend, PyTorch reference, A100
+  benchmarks, and msprof profiling artifacts.
 keywords:
   - Mamba-2
+  - Mamba2
+  - selective scan
+  - SSD chunk scan
   - structured state space model
   - AscendC
   - Huawei Ascend NPU
+  - Ascend 910B3
+  - Ascend 950PR
+  - CANN
+  - torch_npu
   - custom operator
   - PyTorch
   - Triton-Ascend

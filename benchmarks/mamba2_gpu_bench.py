@@ -9,20 +9,12 @@ from pathlib import Path
 
 import torch
 
-
-BASE_CASES = {
-    "tiny": (1, 128, 2, 64, 64, 1, 64),
-    "small": (2, 512, 8, 64, 64, 1, 64),
-    "medium": (4, 2048, 16, 64, 128, 4, 128),
-    "extreme": (8, 4096, 32, 64, 128, 8, 128),
-    "super_extreme": (8, 8192, 32, 64, 128, 8, 128),
-    "ultra_extreme": (8, 16384, 32, 64, 128, 8, 128),
-}
-SEQUENCE_CASES = {
-    f"seq_{length}": (8, length, 32, 64, 128, 8, 128)
-    for length in (512, 1024, 2048, 4096, 8192, 16384)
-}
-CASES = {**BASE_CASES, **SEQUENCE_CASES}
+from mamba2_shape_matrix import (
+    CASES,
+    SHAPE_CASES,
+    SUITES,
+    select_case_names,
+)
 
 
 def make_inputs(case):
@@ -42,7 +34,11 @@ def make_inputs(case):
     D = randn(nheads, headdim)
     z = randn(batch, seqlen, nheads, headdim)
     dt_bias = randn(nheads) * 0.1
-    values = tuple(value.cuda() for value in (x, dt, A, B, C, D, z, dt_bias))
+    initial_states = randn(batch, nheads, headdim, dstate) / 5
+    values = tuple(
+        value.cuda()
+        for value in (x, dt, A, B, C, D, z, dt_bias, initial_states)
+    )
     return values, chunk_size
 
 
@@ -50,7 +46,7 @@ def benchmark(case, warmup, repeat):
     from mamba_ssm.ops.triton.ssd_combined import mamba_chunk_scan_combined
 
     inputs, chunk_size = make_inputs(case)
-    x, dt, A, B, C, D, z, dt_bias = inputs
+    x, dt, A, B, C, D, z, dt_bias, initial_states = inputs
 
     def run():
         return mamba_chunk_scan_combined(
@@ -63,7 +59,9 @@ def benchmark(case, warmup, repeat):
             D=D,
             z=z,
             dt_bias=dt_bias,
+            initial_states=initial_states,
             dt_softplus=True,
+            return_final_states=True,
         )
 
     with torch.no_grad():
@@ -80,9 +78,13 @@ def benchmark(case, warmup, repeat):
     times_ms = [start.elapsed_time(end) for start, end in zip(starts, ends)]
     batch, seqlen, nheads, headdim, dstate, ngroups, chunk_size = CASES[case]
     return {
+        "status": "ok",
         "backend": "mamba_ssm",
         "device": torch.cuda.get_device_name(0),
         "case": case,
+        "suite_axis": SHAPE_CASES[case].axis,
+        "expected_910b3_path": SHAPE_CASES[case].expected_910b3_path,
+        "full_feature_input_mib": SHAPE_CASES[case].full_feature_input_mib,
         "shape": CASES[case],
         "shape_b_l_h_p_n_c_g": [
             batch, seqlen, nheads, headdim, dstate, chunk_size, ngroups
@@ -95,30 +97,59 @@ def benchmark(case, warmup, repeat):
         "p90_ms": sorted(times_ms)[int(0.9 * (len(times_ms) - 1))],
         "min_ms": min(times_ms),
         "max_ms": max(times_ms),
-        "checksum": output.float().sum().item(),
+        "checksum": output[0].float().sum().item(),
+        "final_state_checksum": output[1].float().sum().item(),
     }
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cases", nargs="+", choices=tuple(CASES), default=list(BASE_CASES))
+    parser.add_argument("--cases", nargs="+", choices=tuple(CASES))
+    parser.add_argument("--suite", choices=tuple(SUITES), default="standard")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--repeat", type=int, default=50)
     parser.add_argument(
         "--output",
         help="Optional JSONL output path; parent directories are created.",
     )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Record a failed/OOM case and continue the selected shape suite.",
+    )
     args = parser.parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("No CUDA GPU is available")
-    results = [benchmark(case, args.warmup, args.repeat) for case in args.cases]
-    rendered = [json.dumps(result, ensure_ascii=False) for result in results]
-    for line in rendered:
-        print(line)
+    case_names = select_case_names(args.cases, args.suite)
+    output_handle = None
     if args.output:
         destination = Path(args.output)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text("\n".join(rendered) + "\n")
+        output_handle = destination.open("w", encoding="utf-8")
+    try:
+        for case in case_names:
+            try:
+                result = benchmark(case, args.warmup, args.repeat)
+            except (OSError, RuntimeError) as error:
+                if not args.continue_on_error:
+                    raise
+                torch.cuda.empty_cache()
+                result = {
+                    "status": "error",
+                    "backend": "mamba_ssm",
+                    "device": torch.cuda.get_device_name(0),
+                    "case": case,
+                    "shape_b_l_h_p_n_c_g": list(SHAPE_CASES[case].public_tuple),
+                    "error": str(error),
+                }
+            line = json.dumps(result, ensure_ascii=False, allow_nan=False)
+            print(line, flush=True)
+            if output_handle is not None:
+                output_handle.write(line + "\n")
+                output_handle.flush()
+    finally:
+        if output_handle is not None:
+            output_handle.close()
 
 
 if __name__ == "__main__":

@@ -84,8 +84,10 @@ Regular tensors keep `x.numel() <= 200K`.
 | G10 | odd-L | (1,31,2,16,16,16,1) | ALL | L smaller than one micro-chunk |
 | G11 | head-group-ratio | (1,96,16,16,32,32,1) | BASIC | 16 heads sharing one B/C group |
 | G12 | many-groups | (1,96,16,16,32,32,8) | ALL | two heads per group |
+| G13 | logical-chunk256 | (1,256,8,64,128,256,2) | ALL without z | logical chunk mapped to 2x128 micro-tiles |
+| G14 | logical-chunk512 | (1,512,8,64,128,512,2) | ALL without z | logical chunk mapped to 4x128 micro-tiles |
 
-Coverage count is `(18 regular + 12 general) * 1 dtype = 30` cases before boundary
+Coverage count is `(18 regular + 14 general) * 1 dtype = 32` cases before boundary
 variants. Feature expansion is explicit in the table rather than implicit test nesting.
 
 ## 4. Boundary cases
@@ -179,11 +181,27 @@ operands are selected.
 
 All use ALL features, FP32 API, seed 20260801.
 
-| Case | Shape `(B,L,H,P,N,C,G)` | Triton 910B | A30 median | AscendC Gate |
-|---|---|---:|---:|---:|
-| tiny | (1,128,2,64,64,64,1) | 0.166596 ms | 0.601600 ms | first record, no regression hiding |
-| small | (2,512,8,64,64,64,1) | 0.537070 ms | 0.605184 ms | first record, no regression hiding |
-| medium | (4,2048,16,64,128,128,4) | 4.245598 ms | 0.920576 ms | <=4.245598 ms after optimization |
+The canonical table is `benchmarks/mamba2_shape_matrix.py`; the profiler subset is
+the JSONL-only `mamba2_ssd_fwd_perf_cases.jsonl`.  The full matrix has 52 cases and
+the default standard suite has 31 representative cases.  It replaces a three-shape
+benchmark that could not distinguish dispatch, inner-dimension, grouping, or tail
+regressions.
+
+| Suite | Controlled variable | Values / coverage |
+|---|---|---|
+| smoke | correctness before timing | generic, tail, aligned, N64/N128 Cube, logical chunk 256 |
+| dispatch | implementation route | generic / aligned / Cube-MIX |
+| sequence | `L` | 512, 1024, 2048, 4096, 8192, 16384 |
+| batch | `B` | 1, 2, 4, 8, 16 |
+| heads | `H` | 4, 8, 16, 32, 64 |
+| groups | `G` | 1, 2, 4, 8, 16 |
+| inner | `P`, `N`, logical chunk | P/N 16/32/64/128; chunk 16/32/64/128/256/512 |
+| stress | sustained throughput | legacy extreme series plus heavy H128/H256 |
+
+Every performance row records the canonical shape, logical task count, estimated
+public-input bytes, expected 910B3 dispatch, device-event p50/p90, warmup/repeat,
+output/final-state precision metrics, and the actual accelerator name.  A100 and
+AscendC runners import the same table.
 
 Profiler schedule is `warmup=5, active=5` for skill compliance, with a second 10-repeat
 msprof run for continuity with the Triton report. Report kernel-only device duration,
@@ -192,7 +210,9 @@ wrapper end-to-end device chain and workspace bytes.
 ## 8. Coverage Gate
 
 - [x] every supported dtype is covered by every listed case;
-- [x] `(TEST_CASES + GENERAL_CASES) * dtypes = 30`;
+- [x] `(TEST_CASES + GENERAL_CASES) * dtypes = 32`;
 - [x] regular shapes respect the <=200K input-element guideline;
 - [x] D/z/bias/softplus/initial/final/tail/multi-group are covered;
-- [x] CPU, Triton NPU, PyTorch NPU, A30 and future A100 baselines are named.
+- [x] CPU, Triton NPU, PyTorch NPU, A30 and A100 baselines are named;
+- [x] the performance matrix covers every public shape axis and all three dispatch paths;
+- [x] the profiler subset contains at least eight JSONL cases.
