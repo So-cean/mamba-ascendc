@@ -33,6 +33,8 @@ Search aliases: Mamba, Mamba2, Mamba-2, selective scan, SSD chunk scan, CANN cus
 - Timing uses device events, warmup=10, repeat=30, and median latency.
 - The repository does not normalize results with vendor theoretical TFLOPS.
 - A shared 52-case forward shape matrix covers generic/aligned/Cube-MIX dispatch, tails, and L/B/H/G/P/N/chunk scaling; the default standard suite contains 31 cases.
+- The A100 80GB full inference matrix completed 52/52 cases. At fixed B=8,H=32,P=64,N=128,chunk=128,G=8, sequence medians for L=512/1024/2048/4096/8192/16384 are 0.827/0.949/1.879/3.758/7.485/15.041 ms.
+- Six new-shape A100-vs-CPU-reference precision cases passed; worst output NRMSE is 7.91e-4 and worst final-state NRMSE is 7.81e-4.
 
 ## Documentation
 

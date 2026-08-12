@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "snapshot_date": "2026-08-10",
+  "snapshot_date": "2026-08-12",
   "operator": "Mamba-2 SSD forward and backward",
   "shape_order": "B,L,H,P,N,chunk,G",
   "benchmark_protocol": {
@@ -21,6 +21,52 @@
     "ascend_910b3": {
       "device": "Ascend 910B3",
       "forward_ms": 31.8882198
+    }
+  },
+  "a100_inference_shape_matrix": {
+    "device": "NVIDIA A100 80GB PCIe",
+    "backend": "mamba_ssm 2.2.6.post3",
+    "dtype": "float32",
+    "features": "D+z+dt_bias+softplus+initial_state+final_state",
+    "timer": "CUDA events",
+    "warmup": 5,
+    "repeat": 30,
+    "cases_total": 52,
+    "cases_ok": 52,
+    "sequence_scaling": [
+      {"seqlen": 512, "median_ms": 0.8268800},
+      {"seqlen": 1024, "median_ms": 0.9492480},
+      {"seqlen": 2048, "median_ms": 1.8785280},
+      {"seqlen": 4096, "median_ms": 3.7580800},
+      {"seqlen": 8192, "median_ms": 7.4849279},
+      {"seqlen": 16384, "median_ms": 15.0405116}
+    ],
+    "batch_scaling": [
+      {"batch": 1, "median_ms": 0.8345600},
+      {"batch": 2, "median_ms": 0.8320000},
+      {"batch": 4, "median_ms": 0.8376320},
+      {"batch": 8, "median_ms": 0.9656320},
+      {"batch": 16, "median_ms": 1.9097600}
+    ],
+    "head_scaling": [
+      {"heads": 4, "median_ms": 0.8232960},
+      {"heads": 8, "median_ms": 0.8227840},
+      {"heads": 16, "median_ms": 0.8258560},
+      {"heads": 32, "median_ms": 0.9036800},
+      {"heads": 64, "median_ms": 1.7131521}
+    ],
+    "heavy_stress": [
+      {"heads": 128, "groups": 32, "median_ms": 12.3760643},
+      {"heads": 256, "groups": 64, "median_ms": 24.7961597}
+    ],
+    "precision_smoke": {
+      "cases": 6,
+      "passed": 6,
+      "worst_output_nrmse": 0.0007908071,
+      "worst_final_state_nrmse": 0.0007808284,
+      "worst_output_max_abs": 0.0135822296,
+      "worst_final_state_max_abs": 0.0017862320,
+      "finite": true
     }
   },
   "head_scaling": [

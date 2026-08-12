@@ -73,6 +73,42 @@ AscendC runner 默认在计时前用 NPU PyTorch reference 检查 output 与 fin
 只有已通过独立精度回归、且 reference 会显著抬高 stress case 峰值内存时，才允许
 显式加 `--skip-precision`。完整 sweep 可分别使用 `--suite dispatch|sequence|batch|heads|groups|inner|stress|all`；`--cases` 仍可选择单点。
 
+### A100 80GB shape matrix result
+
+2026-08-12 在 NVIDIA A100 80GB PCIe、`mamba_ssm 2.2.6.post3` 上运行完整
+`all` suite，52/52 case 成功。Public inputs 为 FP32，启用
+`D/z/dt_bias/softplus/initial_state/final_state`，CUDA Event，`warmup=5`、
+`repeat=30`、报告 median。以下只展示单变量 scaling；完整结构化快照在
+`readme_benchmarks.json`。
+
+| Sequence length `L` | 512 | 1024 | 2048 | 4096 | 8192 | 16384 |
+|---:|---:|---:|---:|---:|---:|---:|
+| A100 median | 0.827 ms | 0.949 ms | 1.879 ms | 3.758 ms | 7.485 ms | 15.041 ms |
+
+固定 `[B,H,P,N,chunk,G]=[8,32,64,128,128,8]`。从 `L=2048` 开始，latency
+随 sequence 基本线性增长；`L=512/1024` 仍有明显的约 0.8 ms 固定开销平台。
+
+| Batch `B` | 1 | 2 | 4 | 8 | 16 |
+|---:|---:|---:|---:|---:|---:|
+| A100 median | 0.835 ms | 0.832 ms | 0.838 ms | 0.966 ms | 1.910 ms |
+
+固定 `[L,H,P,N,chunk,G]=[2048,16,64,128,128,4]`。`B<=4` 尚未充分 stress
+GPU；到 `B=8/16` 才进入吞吐 scaling。
+
+| Heads `H` | 4 | 8 | 16 | 32 | 64 |
+|---:|---:|---:|---:|---:|---:|
+| A100 median | 0.823 ms | 0.823 ms | 0.826 ms | 0.904 ms | 1.713 ms |
+
+固定 `[B,L,P,N,chunk,G]=[4,2048,64,128,128,4]`。H128/H256 heavy stress
+分别为 `12.376 ms` 和 `24.796 ms`，证明在足够大的 workload 上 A100 latency
+也近似随任务量线性增长，不能用小 shape 的固定开销平台推断 sustained throughput。
+
+另外抽取 generic、tail、aligned、N64/N128 Cube-like 和 logical chunk 256 共
+6 个 FP32 case 与 CPU PyTorch reference 对拍：6/6 通过，worst output NRMSE
+`7.91e-4`，worst final-state NRMSE `7.81e-4`，全部 finite。大规格官方 Triton
+kernel 的少量近零元素会超过旧的逐元素 `rtol=1e-2, atol=3e-3`，因此新增矩阵
+门禁同时限制 NRMSE 和 max-absolute error；原有小 shape 严格 assert-close 测试不变。
+
 训练 forward heavy sweep 固定 `B=8,L=4096,P=N=chunk=64,H/G=4`：
 
 ```bash

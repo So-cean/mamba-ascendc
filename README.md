@@ -129,6 +129,18 @@ python benchmarks/mamba2_shape_matrix.py --suite standard --format markdown
 完整 case、计时规范与 suite 命令见
 [`benchmarks/README.md`](benchmarks/README.md#forward)。
 
+最新 A100 80GB inference matrix 已完成 52/52 case。固定
+`[B,H,P,N,chunk,G]=[8,32,64,128,128,8]` 时，sequence scaling 为：
+
+| `L` | 512 | 1024 | 2048 | 4096 | 8192 | 16384 |
+|---:|---:|---:|---:|---:|---:|---:|
+| A100 80GB | 0.827 ms | 0.949 ms | 1.879 ms | 3.758 ms | 7.485 ms | 15.041 ms |
+
+这说明 A100 在小 shape 上主要处于约 0.8 ms 的固定开销平台；从 `L=2048`
+开始才呈现清晰的 sustained linear scaling。六类新增 shape 的 FP32 reference
+精度 smoke 为 6/6 通过，worst output/final-state NRMSE 分别为 `7.91e-4` 和
+`7.81e-4`。完整 batch/head/heavy 数据与测试口径见 benchmark 文档。
+
 ### A100 80GB 与 Ascend 910B3
 
 ![H256 A100 and Ascend 910B3 training gate](assets/h256-training-gate.svg)
