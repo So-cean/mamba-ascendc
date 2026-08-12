@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 from pathlib import Path
 
 import torch
 import torch.nn.functional as F
+
+# This benchmark reports the validated 2x128 execution of public chunk_size=256.
+# Configure packaged runtime dispatch before importing ascend_kernel.
+os.environ.setdefault("MAMBA_ASCENDC_CHUNK_MIX", "1")
+os.environ.setdefault("MAMBA_ASCENDC_CHUNK128", "1")
 
 import ascend_kernel
 from mamba_torch.ssd_reference import ssd_chunk_scan_ref

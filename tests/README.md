@@ -10,7 +10,7 @@
 | Mathematical oracle | `tests/mamba2/test_reference.py` | CPU | SSD 数学语义 |
 | Vision-Mamba2 | `tests/mamba2/test_vmamba2_network.py` | CPU/GPU/NPU | 纯网络结构与 backend 接入 |
 | A100 equivalence | `tests/mamba2/test_gpu_reference.py` | CUDA | upstream `mamba_ssm` 对拍 |
-| Triton-Ascend | `tests/mamba2/test_npu_compile.py`、`test_npu_triton_fwd.py` | NPU | DSL 编译与 FWD 精度 |
+| Triton-Ascend | `tests/mamba2/test_npu_compile.py`、`tests/mamba2/test_npu_triton_fwd.py` | NPU | DSL 编译与 FWD 精度 |
 | AscendC public API | `mamba_ascendc/tests/` | NPU | FWD、public autograd BWD、dispatch |
 | AIV/fallback component | `mamba_ascendc/csrc/ops/*/test/` | NPU | 单算子 precision/profiler/sanitizer |
 | Cube/MIX component | `mamba_ascendc_ops/mamba2_ssd_chunk_mix/test/` | NPU | OPP kernel 与架构专项 |
