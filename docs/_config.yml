@@ -1,0 +1,10 @@
+title: "Mamba2 Selective Scan for Ascend NPU"
+description: "Native AscendC Mamba-2 SSD forward/backward custom operator for Huawei Ascend 910B3 and 950PR."
+url: "https://so-cean.github.io"
+baseurl: "/mamba-ascendc"
+lang: en-US
+theme: jekyll-theme-cayman
+repository: So-cean/mamba-ascendc
+github:
+  is_project_page: true
+  repository_url: "https://github.com/So-cean/mamba-ascendc"

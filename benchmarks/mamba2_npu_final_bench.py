@@ -12,22 +12,17 @@ import torch.nn.functional as F
 import torch_npu
 
 import ascend_kernel
+from mamba2_shape_matrix import (
+    BASE_CASES,
+    CASES,
+    SEQUENCE_CASES,
+    SHAPE_CASES,
+    SUITES,
+    select_case_names,
+)
 from mamba_torch.ssd_reference import ssd_chunk_scan_ref
 
-
-BASE_CASES = {
-    "tiny": (1, 128, 2, 64, 64, 1, 64),
-    "small": (2, 512, 8, 64, 64, 1, 64),
-    "medium": (4, 2048, 16, 64, 128, 4, 128),
-    "extreme": (8, 4096, 32, 64, 128, 8, 128),
-    "super_extreme": (8, 8192, 32, 64, 128, 8, 128),
-    "ultra_extreme": (8, 16384, 32, 64, 128, 8, 128),
-}
-SEQUENCE_CASES = {
-    f"seq_{length}": (8, length, 32, 64, 128, 8, 128)
-    for length in (512, 1024, 2048, 4096, 8192, 16384)
-}
-CASES = {**BASE_CASES, **SEQUENCE_CASES}
+__all__ = ["BASE_CASES", "CASES", "SEQUENCE_CASES", "make_inputs"]
 
 
 def make_inputs(case):
@@ -46,6 +41,7 @@ def make_inputs(case):
         randn(nheads, headdim),
         randn(batch, seqlen, nheads, headdim),
         randn(nheads) * 0.1,
+        randn(batch, nheads, headdim, dstate) / 5,
     )
     return tuple(value.npu() for value in values), chunk_size
 
@@ -53,6 +49,7 @@ def make_inputs(case):
 def metrics(actual, expected):
     error = actual.float() - expected.float()
     return {
+        "status": "ok",
         "max_abs": error.abs().max().item(),
         "mean_abs": error.abs().mean().item(),
         "nrmse": (
@@ -67,7 +64,7 @@ def metrics(actual, expected):
 
 
 def invoke(values, chunk_size):
-    x, dt, A, B, C, D, z, dt_bias = values
+    x, dt, A, B, C, D, z, dt_bias, initial_states = values
     return ascend_kernel.mamba2_ssd_fwd(
         x,
         dt,
@@ -78,6 +75,7 @@ def invoke(values, chunk_size):
         D=D,
         z=z,
         dt_bias=dt_bias,
+        initial_states=initial_states,
         dt_softplus=True,
         return_final_state=True,
     )
@@ -86,7 +84,7 @@ def invoke(values, chunk_size):
 def run_case(case, warmup, repeat, skip_precision=False):
     values, chunk_size = make_inputs(case)
     batch, seqlen, nheads, headdim, dstate, ngroups, _ = CASES[case]
-    x, dt, A, B, C, D, z, dt_bias = values
+    x, dt, A, B, C, D, z, dt_bias, initial_states = values
     with torch.no_grad():
         if skip_precision:
             out, state = invoke(values, chunk_size)
@@ -104,6 +102,7 @@ def run_case(case, warmup, repeat, skip_precision=False):
                 D=D,
                 z=z,
                 dt_bias=dt_bias,
+                initial_states=initial_states,
                 dt_softplus=True,
                 return_final_state=True,
             )
@@ -111,6 +110,11 @@ def run_case(case, warmup, repeat, skip_precision=False):
             torch.npu.synchronize()
             out_metrics = metrics(out, ref_out)
             state_metrics = metrics(state, ref_state)
+            if not (out_metrics["allclose"] and state_metrics["allclose"]):
+                raise AssertionError(
+                    f"precision gate failed before timing case={case}: "
+                    f"out={out_metrics}, final_state={state_metrics}"
+                )
         for _ in range(warmup):
             out, state = invoke(values, chunk_size)
         torch.npu.synchronize()
@@ -126,6 +130,9 @@ def run_case(case, warmup, repeat, skip_precision=False):
         "backend": "ascendc",
         "device": torch.npu.get_device_name(0),
         "case": case,
+        "suite_axis": SHAPE_CASES[case].axis,
+        "expected_910b3_path": SHAPE_CASES[case].expected_910b3_path,
+        "full_feature_input_mib": SHAPE_CASES[case].full_feature_input_mib,
         "shape_b_l_h_p_n_c_g": [
             batch, seqlen, nheads, headdim, dstate, chunk_size, ngroups
         ],
@@ -169,8 +176,9 @@ def profile(case, output_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--cases", nargs="+", choices=tuple(CASES), default=tuple(BASE_CASES)
+        "--cases", nargs="+", choices=tuple(CASES)
     )
+    parser.add_argument("--suite", choices=tuple(SUITES), default="standard")
     parser.add_argument("--warmup", type=int, default=30)
     parser.add_argument("--repeat", type=int, default=200)
     parser.add_argument("--output")
@@ -180,19 +188,46 @@ def main():
         action="store_true",
         help="Skip the PyTorch reference for memory-heavy performance-only cases.",
     )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Record a failed/OOM case and continue the selected shape suite.",
+    )
     args = parser.parse_args()
-    results = [
-        run_case(case, args.warmup, args.repeat, args.skip_precision)
-        for case in args.cases
-    ]
-    for result in results:
-        print(json.dumps(result, ensure_ascii=False), flush=True)
+    case_names = select_case_names(args.cases, args.suite)
+    output_handle = None
     if args.output:
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(results, indent=2, ensure_ascii=False) + "\n")
+        output_handle = output.open("w", encoding="utf-8")
+    try:
+        for case in case_names:
+            try:
+                result = run_case(
+                    case, args.warmup, args.repeat, args.skip_precision
+                )
+            except (AssertionError, RuntimeError) as error:
+                if not args.continue_on_error:
+                    raise
+                torch.npu.empty_cache()
+                result = {
+                    "status": "error",
+                    "backend": "ascendc",
+                    "device": torch.npu.get_device_name(0),
+                    "case": case,
+                    "shape_b_l_h_p_n_c_g": list(SHAPE_CASES[case].public_tuple),
+                    "error": str(error),
+                }
+            line = json.dumps(result, ensure_ascii=False, allow_nan=False)
+            print(line, flush=True)
+            if output_handle is not None:
+                output_handle.write(line + "\n")
+                output_handle.flush()
+    finally:
+        if output_handle is not None:
+            output_handle.close()
     if args.profile_root:
-        for case in args.cases:
+        for case in case_names:
             profile(case, str(Path(args.profile_root) / case))
 
 

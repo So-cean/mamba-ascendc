@@ -1,19 +1,21 @@
-# Mamba-2 SSD for Ascend NPU
+# Mamba2 / Mamba-2 Selective Scan for Ascend NPU
 
 [![CPU CI](https://github.com/So-cean/mamba-ascendc/actions/workflows/ci.yml/badge.svg)](https://github.com/So-cean/mamba-ascendc/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/So-cean/mamba-ascendc)](https://github.com/So-cean/mamba-ascendc/releases)
 
-Native AscendC implementation of the Mamba-2 Structured State Space Duality
-(SSD) operator, including inference forward and public-autograd backward. The
-repository also contains a PyTorch oracle, a Triton-Ascend comparison path,
-A100 `mamba_ssm` baselines, device-event benchmarks, msprof profiling, and a
-pure Vision-Mamba2 integration test.
+Native AscendC custom operator implementation of Mamba2 (Mamba-2) selective
+scan / Structured State Space Duality (SSD) forward and backward for Huawei
+Ascend 910B3 and Ascend 950PR. It is built with CANN, exposed to PyTorch through
+`torch_npu`, and compared with a PyTorch oracle, Triton-Ascend, and upstream
+`mamba_ssm` on NVIDIA A100 80GB. The repository includes device-event
+benchmarks, msprof profiling, and a pure Vision-Mamba2 integration test.
 
-Mamba-2 Structured State Space Duality（SSD）核心算子的 PyTorch reference、
-Triton-Ascend 和 AscendC 实现。AscendC 是当前 NPU 主路径；仓库同时提供
-A100 `mamba_ssm` 对照、forward/backward 精度测试、device-event benchmark、
-`torch_npu.profiler`/msprof 分析和纯 Vision-Mamba2 网络验证。
+面向华为昇腾 NPU 的 Mamba2（Mamba-2）selective scan / Structured State
+Space Duality（SSD）AscendC 自定义算子，提供 forward 与 backward。AscendC
+是当前 NPU 主路径；仓库同时提供 PyTorch reference、Triton-Ascend、A100
+`mamba_ssm` 对照、精度测试、device-event benchmark、`torch_npu.profiler` /
+msprof 分析和纯 Vision-Mamba2 网络验证。
 
 ## Project facts / 项目事实
 
@@ -32,7 +34,13 @@ A100 `mamba_ssm` 对照、forward/backward 精度测试、device-event benchmark
 Canonical repository: <https://github.com/So-cean/mamba-ascendc>. Machine-readable
 project metadata and crawler-oriented navigation are provided in
 [`codemeta.json`](codemeta.json), [`CITATION.cff`](CITATION.cff), and
-[`llms.txt`](llms.txt).
+[`llms.txt`](llms.txt). The crawler-oriented project page is
+<https://so-cean.github.io/mamba-ascendc/>.
+
+开发与交接导航：[`STRUCTURE.md`](STRUCTURE.md) 说明正式源码、Forward/Backward
+调用链、双 Ascend 工程边界和生成物清理；[`tests/README.md`](tests/README.md)
+说明 CPU、A100、Triton-Ascend、AscendC 与双架构测试 Gate；benchmark 口径见
+[`benchmarks/README.md`](benchmarks/README.md)。
 
 ## Implementation / 实现
 
@@ -92,7 +100,8 @@ public autograd backward
 
 `mamba_ascendc` 负责 public API、autograd、Vector/fallback kernel 和 PyTorch
 扩展；`mamba_ascendc_ops` 负责 Cube/MIX custom OPP。二者由发布脚本合并成一个
-wheel，不是两个竞争版本。完整修改边界见
+wheel，不是两个竞争版本。完整修改边界和交接流程见
+[`STRUCTURE.md`](STRUCTURE.md)，精简 source-of-truth 表见
 [`docs/source-layout.md`](docs/source-layout.md)。
 
 ## Benchmark
@@ -108,6 +117,17 @@ inputs、设备 Event、`warmup=10`、`repeat=30` 和 p50。A100 运行
 `mamba_ssm 2.2.6.post3`；910B3 直接加载当前源码 `.so + OPP`，不经过已安装
 wheel。理论 TFLOPS 未用于归一化，因为不同厂商、数据类型和统计口径不能直接
 等价比较。
+
+Forward 的 GPU/NPU runner 共享同一份 52-case shape matrix；默认 `standard`
+suite 取 31 个代表点，覆盖 generic/aligned/Cube-MIX 路径、非整除 tail、
+`L/B/H/G/P/N/chunk_size` scaling 和 heavy H128/H256。矩阵可直接查看：
+
+```bash
+python benchmarks/mamba2_shape_matrix.py --suite standard --format markdown
+```
+
+完整 case、计时规范与 suite 命令见
+[`benchmarks/README.md`](benchmarks/README.md#forward)。
 
 ### A100 80GB 与 Ascend 910B3
 
@@ -455,7 +475,7 @@ python mamba_ascendc/tests/run_mamba2_ssd_bwd_m1_precision_report.py
 ```bash
 # A100 official mamba_ssm
 python benchmarks/mamba2_gpu_bench.py \
-  --cases medium extreme --warmup 30 --repeat 200
+  --suite standard --warmup 30 --repeat 200
 
 # Triton-Ascend
 python benchmarks/mamba2_triton_ascend_bench.py \
@@ -463,7 +483,7 @@ python benchmarks/mamba2_triton_ascend_bench.py \
 
 # AscendC
 python benchmarks/mamba2_npu_final_bench.py \
-  --cases medium extreme --warmup 30 --repeat 200 --skip-precision
+  --suite standard --warmup 30 --repeat 200
 
 # Forward/backward unified benchmark
 python benchmarks/mamba2_backward_bench.py \
@@ -491,12 +511,37 @@ benchmark 口径、字段和更多命令见 [`benchmarks/README.md`](benchmarks/
   的 head-block contiguous tiling 和 AIC/AIV pipeline。
 - 需要继续扩展 BF16、更多 `N/chunk_size`、`seq_idx/cu_seqlens` 和模型训练回归。
 
+## Frequently asked questions / 常见问题
+
+### Does Mamba2 run on Huawei Ascend NPU?
+
+Yes. This repository implements the Mamba2 SSD/selective-scan core as a native
+AscendC custom operator and provides test paths for Ascend 910B3 and 950PR.
+
+### Is this primarily a Triton implementation?
+
+No. AscendC is the main implementation. Triton-Ascend is retained as a same-NPU
+comparison and migration reference.
+
+### Are forward and backward implemented?
+
+Forward and public-autograd backward are available. Forward covers generic,
+aligned, and Cube/MIX paths; the fastest native backward path currently requires
+contiguous FP32 with `P=N=chunk_size=64`.
+
+### Are the A100 and Ascend benchmark shapes identical?
+
+Yes. The two forward runners import the same canonical shape matrix and use
+device-event timing. Published cross-platform ratios do not use theoretical
+TFLOPS normalization.
+
 ## References / 参考项目
 
 - [state-spaces/mamba](https://github.com/state-spaces/mamba) — Mamba/Mamba-2 官方实现
 - [Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality](https://arxiv.org/abs/2405.21060)
 - [triton-lang/triton](https://github.com/triton-lang/triton)
 - [Ascend/triton-ascend](https://github.com/Ascend/triton-ascend)
+- [cann/ops-transformer experimental Mamba](https://gitcode.com/cann/ops-transformer/tree/master/experimental/mamba) — fixed-shape AscendC Mamba-2 forward suboperators
 - [Ascend/samples](https://github.com/Ascend/samples) — AscendC 自定义算子样例
 - [MzeroMiko/VMamba](https://github.com/MzeroMiko/VMamba)
 

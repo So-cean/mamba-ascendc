@@ -103,3 +103,42 @@ def test_precision(case):
     )
     _assert_close(npu_out, ref_out, "out")
     _assert_close(npu_final, ref_final, "final_state")
+
+
+@pytest.mark.parametrize("logical_chunk,seqlen", [(256, 256), (512, 512)])
+def test_large_logical_chunk_uses_validated_microtiles(
+    monkeypatch, logical_chunk, seqlen
+):
+    """A logical chunk may be executed as multiple 128-token micro-tiles."""
+    import ascend_kernel
+
+    monkeypatch.setenv("MAMBA_ASCENDC_CHUNK_MIX", "1")
+    monkeypatch.setenv("MAMBA_ASCENDC_CHUNK128", "1")
+    args, kwargs = _make_case(
+        batch=1,
+        seqlen=seqlen,
+        nheads=8,
+        headdim=64,
+        dstate=128,
+        ngroups=2,
+        optional=True,
+        initial=True,
+    )
+    # The official comparison does not include z gating.
+    kwargs.pop("z")
+    ref_out, ref_final = ssd_chunk_scan_ref(
+        *args,
+        chunk_size=logical_chunk,
+        return_final_state=True,
+        **kwargs,
+    )
+    npu_args = tuple(_to_npu(value) for value in args)
+    npu_kwargs = {key: _to_npu(value) for key, value in kwargs.items()}
+    npu_out, npu_final = ascend_kernel.mamba2_ssd_fwd(
+        *npu_args,
+        chunk_size=logical_chunk,
+        return_final_state=True,
+        **npu_kwargs,
+    )
+    assert torch.allclose(npu_out.cpu(), ref_out, rtol=1e-2, atol=3e-3)
+    assert torch.allclose(npu_final.cpu(), ref_final, rtol=1e-2, atol=3e-3)

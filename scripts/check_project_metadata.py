@@ -76,6 +76,22 @@ def main() -> None:
     assert codemeta["codeRepository"] == REPOSITORY_URL
     assert codemeta["version"] == version
     assert codemeta["releaseNotes"] == release_url
+    assert "selective scan" in codemeta["keywords"]
+    assert "torch_npu" in codemeta["keywords"]
+
+    sys_path = ROOT / "benchmarks"
+    import sys
+
+    sys.path.insert(0, str(sys_path))
+    from mamba2_shape_matrix import SHAPE_CASES, SUITES  # noqa: PLC0415
+
+    assert len(SHAPE_CASES) >= 50
+    assert len(SUITES["standard"]) >= 30
+    assert {case.expected_910b3_path for case in SHAPE_CASES.values()} == {
+        "generic",
+        "aligned",
+        "cube_mix",
+    }
 
     benchmark = load_json(ROOT / "benchmarks" / "results" / "readme_benchmarks.json")
     gate = benchmark["h256_training_gate"]
@@ -94,8 +110,22 @@ def main() -> None:
         "22.583 ms",
         "70.82%",
     ]
-    require_text(ROOT / "README.md", [*facts, "codemeta.json", "CITATION.cff"])
-    require_text(ROOT / "llms.txt", [*facts, "readme_benchmarks.json"])
+    require_text(
+        ROOT / "README.md",
+        [*facts, "selective scan", "codemeta.json", "CITATION.cff"],
+    )
+    require_text(
+        ROOT / "llms.txt",
+        [*facts, "selective scan", "readme_benchmarks.json"],
+    )
+    require_text(
+        ROOT / "docs" / "index.md",
+        [REPOSITORY_URL, "SoftwareSourceCode", "selective scan", "52-case"],
+    )
+    require_text(
+        ROOT / "scripts" / "update_github_discovery.sh",
+        ["selective-scan", "torch-npu", "source[path]=/docs"],
+    )
 
     print(f"Validated project metadata for mamba-ascendc v{version}")
 

@@ -48,8 +48,8 @@ wheel 包含 OPS kernel binary、custom OPP、`libcust_opapi.so` 和
 
 ## 源码开发与候选验证
 
-日常 kernel 迭代不构建或安装 wheel。扩展使用增量开发构建，OPS 工程将
-候选 kernel 直接 stage 到源码目录下的 `build_out/packages`；测试进程在导入
+日常 kernel 迭代不构建或安装 wheel。扩展使用增量开发构建；OPS 工程当前会
+重新生成 `build_out`，并将候选 kernel stage 到其中的 `packages`；测试进程在导入
 `torch_npu` 前显式指定两项候选产物：
 
 ```bash
